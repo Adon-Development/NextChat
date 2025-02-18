@@ -108,9 +108,9 @@ body {
   touch-action: pan-x pan-y;
   overflow: hidden;
 
-  svg[style*="width: 43"][style*="height: 44"] {
-    width: auto !important;
-    height: auto !important;
+  svg {
+    width: auto;
+    height: auto;
   }
 
   @media only screen and (max-width: 600px) {
