@@ -256,7 +256,6 @@ export function SideBar(props: { className?: string }) {
         shouldNarrow={shouldNarrow}
       >
         <div className={styles["sidebar-header-bar"]}>
-          {/* Mask button removed from UI
           <IconButton
             icon={<MaskIcon />}
             text={shouldNarrow ? undefined : Locale.Mask.Name}
@@ -270,7 +269,6 @@ export function SideBar(props: { className?: string }) {
             }}
             shadow
           />
-          */}
           {mcpEnabled && (
             <IconButton
               icon={<McpIcon />}

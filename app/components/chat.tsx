@@ -588,16 +588,11 @@ export function ChatActions(props: {
         session.mask.modelConfig.providerName = nextModel?.provider
           ?.providerName as ServiceProvider;
       });
-      if (providerName == "ByteDance") {
-        const selectedModel = models.find(
-          (m) =>
-            m.name == model &&
-            m?.provider?.providerName == providerName,
-        );
-        showToast(selectedModel?.displayName ?? "");
-      } else {
-        showToast(model);
-      }
+      showToast(
+        nextModel?.provider?.providerName == "ByteDance"
+          ? nextModel.displayName
+          : nextModel.name,
+      );
     }
   }, [chatStore, currentModel, models, session]);
 
@@ -655,13 +650,13 @@ export function ChatActions(props: {
           icon={<PromptIcon />}
         />
 
-        {/* <ChatAction
+        <ChatAction
           onClick={() => {
             navigate(Path.Masks);
           }}
           text={Locale.Chat.InputActions.Masks}
           icon={<MaskIcon />}
-        /> */}
+        />
 
         <ChatAction
           text={Locale.Chat.InputActions.Clear}
@@ -1210,9 +1205,8 @@ function _Chat() {
   const deleteMessage = (msgId?: string) => {
     chatStore.updateTargetSession(
       session,
-      (session) => {
-        session.messages = session.messages.filter((m) => m.id !== msgId);
-      },
+      (session) =>
+        (session.messages = session.messages.filter((m) => m.id !== msgId)),
     );
   };
 

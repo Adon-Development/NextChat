@@ -196,9 +196,7 @@ function Screen() {
           <Routes>
             <Route path={Path.Home} element={<Chat />} />
             <Route path={Path.NewChat} element={<NewChat />} />
-            {/* Mask route removed from UI
             <Route path={Path.Masks} element={<MaskPage />} />
-            */}
             <Route path={Path.Plugins} element={<PluginPage />} />
             <Route path={Path.SearchChat} element={<SearchChat />} />
             <Route path={Path.Chat} element={<Chat />} />
