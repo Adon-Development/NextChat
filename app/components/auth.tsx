@@ -1,189 +1,83 @@
-import styles from "./auth.module.scss";
-import { IconButton } from "./button";
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { Path, SAAS_CHAT_URL } from "../constant";
-import { useAccessStore } from "../store";
-import Locale from "../locales";
-import Delete from "../icons/close.svg";
-import Arrow from "../icons/arrow.svg";
-import Logo from "../icons/logo.svg";
-import { useMobileScreen } from "@/app/utils";
-import BotIcon from "../icons/bot.svg";
-import { getClientConfig } from "../config/client";
-import { PasswordInput } from "./ui-lib";
-import LeftIcon from "@/app/icons/left.svg";
-import { safeLocalStorage } from "@/app/utils";
-import {
-  trackSettingsPageGuideToCPaymentClick,
-  trackAuthorizationPageButtonToCPaymentClick,
-} from "../utils/auth-settings-events";
-import clsx from "clsx";
+"use client";
 
-const storage = safeLocalStorage();
+import { FC, useState } from "react";
+import styles from "../styles/auth.module.scss";
+import { Path } from "../constant";
+import { useNavigate, useLocation } from "react-router-dom";
+import { useAuthStore } from "../store/auth";
 
-export function AuthPage() {
+export const AuthPage: FC = () => {
   const navigate = useNavigate();
-  const accessStore = useAccessStore();
-  const goHome = () => navigate(Path.Home);
-  const goChat = () => navigate(Path.Chat);
-  const goSaas = () => {
-    trackAuthorizationPageButtonToCPaymentClick();
-    window.location.href = SAAS_CHAT_URL;
+  const location = useLocation();
+  const isLogin = location.pathname === Path.Login;
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const { login, register } = useAuthStore();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    try {
+      if (isLogin) {
+        await login(username, password);
+        navigate(Path.Home);
+      } else {
+        await register(username, password);
+        // After successful registration, navigate to login
+        navigate(Path.Login);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred");
+    }
   };
 
-  const resetAccessCode = () => {
-    accessStore.update((access) => {
-      access.openaiApiKey = "";
-      access.accessCode = "";
-    });
-  }; // Reset access code to empty string
-
-  useEffect(() => {
-    if (getClientConfig()?.isApp) {
-      navigate(Path.Settings);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   return (
-    <div className={styles["auth-page"]}>
-      <TopBanner></TopBanner>
-      <div className={styles["auth-header"]}>
-        <IconButton
-          icon={<LeftIcon />}
-          text={Locale.Auth.Return}
-          onClick={() => navigate(Path.Home)}
-        ></IconButton>
-      </div>
-      <div className={clsx("no-dark", styles["auth-logo"])}>
-        <BotIcon />
-      </div>
-
-      <div className={styles["auth-title"]}>{Locale.Auth.Title}</div>
-      <div className={styles["auth-tips"]}>{Locale.Auth.Tips}</div>
-
-      <PasswordInput
-        style={{ marginTop: "3vh", marginBottom: "3vh" }}
-        aria={Locale.Settings.ShowPassword}
-        aria-label={Locale.Auth.Input}
-        value={accessStore.accessCode}
-        type="text"
-        placeholder={Locale.Auth.Input}
-        onChange={(e) => {
-          accessStore.update(
-            (access) => (access.accessCode = e.currentTarget.value),
-          );
-        }}
-      />
-
-      {!accessStore.hideUserApiKey ? (
-        <>
-          <div className={styles["auth-tips"]}>{Locale.Auth.SubTips}</div>
-          <PasswordInput
-            style={{ marginTop: "3vh", marginBottom: "3vh" }}
-            aria={Locale.Settings.ShowPassword}
-            aria-label={Locale.Settings.Access.OpenAI.ApiKey.Placeholder}
-            value={accessStore.openaiApiKey}
-            type="text"
-            placeholder={Locale.Settings.Access.OpenAI.ApiKey.Placeholder}
-            onChange={(e) => {
-              accessStore.update(
-                (access) => (access.openaiApiKey = e.currentTarget.value),
-              );
-            }}
-          />
-          <PasswordInput
-            style={{ marginTop: "3vh", marginBottom: "3vh" }}
-            aria={Locale.Settings.ShowPassword}
-            aria-label={Locale.Settings.Access.Google.ApiKey.Placeholder}
-            value={accessStore.googleApiKey}
-            type="text"
-            placeholder={Locale.Settings.Access.Google.ApiKey.Placeholder}
-            onChange={(e) => {
-              accessStore.update(
-                (access) => (access.googleApiKey = e.currentTarget.value),
-              );
-            }}
-          />
-        </>
-      ) : null}
-
-      <div className={styles["auth-actions"]}>
-        <IconButton
-          text={Locale.Auth.Confirm}
-          type="primary"
-          onClick={goChat}
-        />
-        <IconButton
-          text={Locale.Auth.SaasTips}
-          onClick={() => {
-            goSaas();
-          }}
-        />
+    <div className={styles.authContainer}>
+      <div className={styles.authCard}>
+        <div className={styles.authHeader}>
+          <h1>VGC Assistant</h1>
+          <p>Ask me anything about VGC and Competitive play</p>
+        </div>
+        {error && <div className={styles.errorMessage}>{error}</div>}
+        <form onSubmit={handleSubmit} className={styles.authForm}>
+          <div className={styles.formGroup}>
+            <input
+              type="text"
+              id="username"
+              name="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+              placeholder="Username"
+            />
+          </div>
+          <div className={styles.formGroup}>
+            <input
+              type="password"
+              id="password"
+              name="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              placeholder="Password"
+            />
+          </div>
+          <div className={styles.buttonGroup}>
+            <button
+              type="button"
+              onClick={() => navigate(isLogin ? Path.Register : Path.Login)}
+              className={styles.authButton}
+            >
+              {isLogin ? "Register" : "Back to Login"}
+            </button>
+            <button type="submit" className={styles.authButton}>
+              {isLogin ? "Login" : "Register"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
-}
-
-function TopBanner() {
-  const [isHovered, setIsHovered] = useState(false);
-  const [isVisible, setIsVisible] = useState(true);
-  const isMobile = useMobileScreen();
-  useEffect(() => {
-    // 检查 localStorage 中是否有标记
-    const bannerDismissed = storage.getItem("bannerDismissed");
-    // 如果标记不存在，存储默认值并显示横幅
-    if (!bannerDismissed) {
-      storage.setItem("bannerDismissed", "false");
-      setIsVisible(true); // 显示横幅
-    } else if (bannerDismissed === "true") {
-      // 如果标记为 "true"，则隐藏横幅
-      setIsVisible(false);
-    }
-  }, []);
-
-  const handleMouseEnter = () => {
-    setIsHovered(true);
-  };
-
-  const handleMouseLeave = () => {
-    setIsHovered(false);
-  };
-
-  const handleClose = () => {
-    setIsVisible(false);
-    storage.setItem("bannerDismissed", "true");
-  };
-
-  if (!isVisible) {
-    return null;
-  }
-  return (
-    <div
-      className={styles["top-banner"]}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-    >
-      <div className={clsx(styles["top-banner-inner"], "no-dark")}>
-        <Logo className={styles["top-banner-logo"]}></Logo>
-        <span>
-          {Locale.Auth.TopTips}
-          <a
-            href={SAAS_CHAT_URL}
-            rel="stylesheet"
-            onClick={() => {
-              trackSettingsPageGuideToCPaymentClick();
-            }}
-          >
-            {Locale.Settings.Access.SaasStart.ChatNow}
-            <Arrow style={{ marginLeft: "4px" }} />
-          </a>
-        </span>
-      </div>
-      {(isHovered || isMobile) && (
-        <Delete className={styles["top-banner-close"]} onClick={handleClose} />
-      )}
-    </div>
-  );
-}
+};

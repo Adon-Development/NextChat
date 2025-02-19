@@ -335,6 +335,33 @@
   margin-right: 15px;
 }
 
+.auth-buttons {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.auth-button {
+  padding: 6px 12px;
+  border-radius: 4px;
+  background-color: #10a37f;
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.3s ease;
+
+  &:hover {
+    background-color: #0d8c6d;
+  }
+}
+
+.username-display {
+  margin-bottom: 10px;
+  color: #666;
+  font-size: 14px;
+}
+
 .loading-content {
   display: flex;
   flex-direction: column;

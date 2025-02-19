@@ -13,6 +13,7 @@ import { getCSSVar, useMobileScreen } from "../utils";
 import dynamic from "next/dynamic";
 import { Path, SlotID } from "../constant";
 import { ErrorBoundary } from "./error";
+import { AuthPage } from "./auth";
 
 import { getISOLang, getLang } from "../locales";
 
@@ -24,7 +25,6 @@ import {
 } from "react-router-dom";
 import { SideBar } from "./sidebar";
 import { useAppConfig } from "../store/config";
-import { AuthPage } from "./auth";
 import { getClientConfig } from "../config/client";
 import { type ClientApi, getClientApi } from "../client/api";
 import { useAccessStore } from "../store";
@@ -163,6 +163,8 @@ function Screen() {
   const isArtifact = location.pathname.includes(Path.Artifacts);
   const isHome = location.pathname === Path.Home;
   const isAuth = location.pathname === Path.Auth;
+  const isLogin = location.pathname === Path.Login;
+  const isRegister = location.pathname === Path.Register;
   const isSd = location.pathname === Path.Sd;
   const isSdNew = location.pathname === Path.SdNew;
 
@@ -181,6 +183,16 @@ function Screen() {
       </Routes>
     );
   }
+
+  if (isLogin || isRegister) {
+    return (
+      <Routes>
+        <Route path={Path.Login} element={<AuthPage />} />
+        <Route path={Path.Register} element={<AuthPage />} />
+      </Routes>
+    );
+  }
+
   const renderContent = () => {
     if (isAuth) return <AuthPage />;
     if (isSd) return <Sd />;

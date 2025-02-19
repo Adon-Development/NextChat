@@ -49,8 +49,10 @@ export enum Path {
   Auth = "/auth",
   Sd = "/sd",
   SdNew = "/sd-new",
-  Artifacts = "/artifacts",
+  Login = "/login",
+  Register = "/register",
   SearchChat = "/search-chat",
+  Artifacts = "/artifacts",
   McpMarket = "/mcp-market",
 }
 
@@ -346,7 +348,7 @@ You are an AI assistant with access to system tools. Your role is to help users 
        "arguments": {}
      }
    }
-   \`\`\`"
+   \`\`\`
 
 
   \`\`\`json:mcp-response:filesystem
