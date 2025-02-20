@@ -1,18 +1,35 @@
 "use client";
 
-import { FC } from "react";
+import { FC, useState } from "react";
 import styles from "../styles/auth.module.scss";
 import { Path } from "../constant";
 import { useNavigate } from "../hooks/useNavigate";
 import Link from "next/link";
+import { useAuthStore } from "../store/auth";
 
 const LoginPage: FC = () => {
   const navigate = useNavigate();
+  const login = useAuthStore((state) => state.login);
+  const [error, setError] = useState<string>("");
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Implement login logic
-    navigate(Path.Home);
+    setError("");
+    setIsLoading(true);
+
+    const formData = new FormData(e.target as HTMLFormElement);
+    const username = formData.get("username") as string;
+    const password = formData.get("password") as string;
+
+    try {
+      await login(username, password);
+      navigate(Path.Home);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -30,6 +47,7 @@ const LoginPage: FC = () => {
               name="username"
               required
               placeholder="Username"
+              disabled={isLoading}
             />
           </div>
           <div className={styles.formGroup}>
@@ -39,14 +57,20 @@ const LoginPage: FC = () => {
               name="password"
               required
               placeholder="Password"
+              disabled={isLoading}
             />
           </div>
+          {error && <div className={styles.error}>{error}</div>}
           <div className={styles.buttonGroup}>
             <Link href={Path.Register} className={styles.authButton}>
               Register
             </Link>
-            <button type="submit" className={styles.authButton}>
-              Login
+            <button
+              type="submit"
+              className={styles.authButton}
+              disabled={isLoading}
+            >
+              {isLoading ? "Logging in..." : "Login"}
             </button>
           </div>
         </form>

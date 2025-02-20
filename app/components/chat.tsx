@@ -96,6 +96,7 @@ import { isEmpty } from "lodash-es";
 import { RealtimeChat } from "@/app/components/realtime-chat";
 import clsx from "clsx";
 import { getAvailableClientsCount, isMcpEnabled } from "../mcp/actions";
+import { useAuthStore } from "../store/auth";
 
 const localStorage = safeLocalStorage();
 
@@ -625,6 +626,7 @@ function _Chat() {
   const config = useAppConfig();
   const fontSize = config.fontSize;
   const fontFamily = config.fontFamily;
+  const { isAuthenticated } = useAuthStore();
 
   const [showExport, setShowExport] = useState(false);
 
@@ -1667,34 +1669,37 @@ function _Chat() {
               />
 
               <div className={styles["chat-input-panel-inner"]}>
-                <textarea
-                  ref={inputRef}
-                  className={styles["chat-input"]}
-                  placeholder={
-                    !isLoggedIn
-                      ? "Please login to send messages"
-                      : Locale.Chat.Input(submitKey)
-                  }
-                  onInput={(e) => onInput(e.currentTarget.value)}
-                  value={userInput}
-                  onKeyDown={(e) => onInputKeyDown(e)}
-                  onFocus={scrollToBottom}
-                  onClick={scrollToBottom}
-                  rows={inputRows}
-                  autoFocus={autoFocus}
-                  disabled={!isLoggedIn}
-                  style={{
-                    fontSize: config.fontSize,
-                  }}
-                />
-                <IconButton
-                  icon={<SendWhiteIcon />}
-                  text={Locale.Chat.Send}
-                  className={styles["chat-input-send"]}
-                  type="primary"
-                  onClick={() => doSubmit(userInput)}
-                  disabled={!isLoggedIn || userInput.trim().length === 0}
-                />
+                {isAuthenticated ? (
+                  <>
+                    <textarea
+                      ref={inputRef}
+                      className={styles["chat-input"]}
+                      placeholder={Locale.Chat.Input(submitKey)}
+                      onInput={(e) => onInput(e.currentTarget.value)}
+                      value={userInput}
+                      onKeyDown={(e) => onInputKeyDown(e)}
+                      onFocus={scrollToBottom}
+                      onClick={scrollToBottom}
+                      rows={inputRows}
+                      autoFocus={autoFocus}
+                      style={{
+                        fontSize: config.fontSize,
+                      }}
+                    />
+                    <IconButton
+                      icon={<SendWhiteIcon />}
+                      text={Locale.Chat.Send}
+                      className={styles["chat-input-send"]}
+                      type="primary"
+                      onClick={() => doSubmit(userInput)}
+                      disabled={userInput.trim().length === 0}
+                    />
+                  </>
+                ) : (
+                  <div className={styles["chat-input-panel-inner"]}>
+                    Please login to send messages
+                  </div>
+                )}
               </div>
             </div>
           </div>
