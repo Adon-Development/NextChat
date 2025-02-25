@@ -1,6 +1,5 @@
 import { ApiPath } from "@/app/constant";
 import { NextRequest } from "next/server";
-import { handle as openaiHandler } from "../../openai";
 import { handle as azureHandler } from "../../azure";
 import { handle as googleHandler } from "../../google";
 import { handle as anthropicHandler } from "../../anthropic";
@@ -18,10 +17,161 @@ import { handle as proxyHandler } from "../../proxy";
 
 async function handle(
   req: NextRequest,
-  { params }: { params: { provider: string; path: string[] } },
+  { params }: { params: { provider?: string; path?: string[] } },
 ) {
+  console.log(`[${params?.provider} Route] params:`, params);
+
+  // Ensure we have a provider
+  if (!params?.provider) {
+    return new Response(
+      JSON.stringify({ error: "Missing provider in request params." }),
+      { status: 400, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  // Check if the provider is "openai"
+  if (params.provider.toLowerCase() === "openai") {
+    try {
+      console.log("[OpenAI Route] Request path:", params.path);
+
+      // Parse the request body with error handling
+      let body;
+      try {
+        body = await req.json();
+        console.log(
+          "[OpenAI Route] Request body:",
+          JSON.stringify(body, null, 2),
+        );
+      } catch (error) {
+        console.error("[OpenAI Route] Error parsing request body:", error);
+        return new Response(
+          JSON.stringify({
+            error: "Failed to parse request body as JSON",
+            details: error instanceof Error ? error.message : "Unknown error",
+          }),
+          { status: 400, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      // Extract just the user's text from the messages array
+      const userText =
+        body.messages?.find((m) => m.role === "user")?.content || "";
+
+      // Forward the request to your Cloudflare Worker endpoint
+      const workerResponse = await fetch("https://vgcassistant.com/bot", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(req.headers.get("authorization") && {
+            Authorization: req.headers.get("authorization")!,
+          }),
+        },
+        body: JSON.stringify({
+          query: userText, // Just send the user's text
+        }),
+      });
+
+      // Log the worker response for debugging
+      console.log(
+        "[OpenAI Route] Worker response status:",
+        workerResponse.status,
+      );
+
+      // Handle error responses
+      if (!workerResponse.ok) {
+        let errorMessage;
+        try {
+          const errorData = await workerResponse.json();
+          console.error("[OpenAI Route] Worker error data:", errorData);
+          errorMessage =
+            errorData.error || errorData.message || "Unknown error";
+        } catch (e) {
+          const textError = await workerResponse.text();
+          console.error("[OpenAI Route] Worker error text:", textError);
+          errorMessage = textError || "Failed to get error details";
+        }
+
+        return new Response(
+          JSON.stringify({
+            error: "Worker request failed",
+            status: workerResponse.status,
+            details: errorMessage,
+          }),
+          {
+            status: workerResponse.status,
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            },
+          },
+        );
+      }
+
+      // Handle regular response
+      try {
+        const responseData = await workerResponse.json();
+        // Format the response back into the expected chat format
+        return new Response(
+          JSON.stringify({
+            id: Date.now().toString(),
+            object: "chat.completion",
+            choices: [
+              {
+                message: {
+                  role: "assistant",
+                  content: responseData.response || responseData,
+                },
+              },
+            ],
+          }),
+          {
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            },
+          },
+        );
+      } catch (e) {
+        console.error("[OpenAI Route] Error parsing worker response:", e);
+        const textResponse = await workerResponse.text();
+        console.error("[OpenAI Route] Raw worker response:", textResponse);
+        return new Response(
+          JSON.stringify({
+            error: "Invalid response from worker",
+            details: "Worker returned invalid JSON",
+            raw: textResponse,
+          }),
+          {
+            status: 500,
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            },
+          },
+        );
+      }
+    } catch (error) {
+      console.error("[OpenAI Route] Error:", error);
+      return new Response(
+        JSON.stringify({
+          error: "Internal server error",
+          details: error instanceof Error ? error.message : "Unknown error",
+        }),
+        {
+          status: 500,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        },
+      );
+    }
+  }
+
+  // For all other providers, use their respective handlers.
   const apiPath = `/api/${params.provider}`;
-  console.log(`[${params.provider} Route] params `, params);
+  console.log(`[${params.provider} Route] Using provider handler.`, params);
+
   switch (apiPath) {
     case ApiPath.Azure:
       return azureHandler(req, { params });
@@ -35,7 +185,6 @@ async function handle(
       return bytedanceHandler(req, { params });
     case ApiPath.Alibaba:
       return alibabaHandler(req, { params });
-    // case ApiPath.Tencent: using "/api/tencent"
     case ApiPath.Moonshot:
       return moonshotHandler(req, { params });
     case ApiPath.Stability:
@@ -50,8 +199,6 @@ async function handle(
       return chatglmHandler(req, { params });
     case ApiPath.SiliconFlow:
       return siliconflowHandler(req, { params });
-    case ApiPath.OpenAI:
-      return openaiHandler(req, { params });
     default:
       return proxyHandler(req, { params });
   }

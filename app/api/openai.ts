@@ -1,8 +1,8 @@
-import { type OpenAIListModelResponse } from "@/app/client/platforms/openai";
+import { NextApiRequest, NextApiResponse } from "next";
+import { OpenAIListModelResponse } from "@/app/client/platforms/openai";
 import { getServerSideConfig } from "@/app/config/server";
 import { ModelProvider, OpenaiPath } from "@/app/constant";
 import { prettyObject } from "@/app/utils/format";
-import { NextRequest, NextResponse } from "next/server";
 import { auth } from "./auth";
 import { requestOpenai } from "./common";
 
@@ -26,53 +26,91 @@ function getModels(remoteModelRes: OpenAIListModelResponse) {
   return remoteModelRes;
 }
 
-export async function handle(
-  req: NextRequest,
-  { params }: { params: { path: string[] } },
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse,
 ) {
-  console.log("[OpenAI Route] params ", params);
+  console.log("[OpenAI Route] params ", req.query);
 
   if (req.method === "OPTIONS") {
-    return NextResponse.json({ body: "OK" }, { status: 200 });
+    res.status(200).json({ body: "OK" });
+    return;
   }
 
-  const subpath = params.path.join("/");
+  const subpath = Array.isArray(req.query.path)
+    ? req.query.path.join("/")
+    : req.query.path;
 
   if (!ALLOWED_PATH.has(subpath)) {
     console.log("[OpenAI Route] forbidden path ", subpath);
-    return NextResponse.json(
-      {
-        error: true,
-        msg: "you are not allowed to request " + subpath,
-      },
-      {
-        status: 403,
-      },
-    );
+    res.status(403).json({
+      error: true,
+      msg: "you are not allowed to request " + subpath,
+    });
+    return;
   }
 
   const authResult = auth(req, ModelProvider.GPT);
   if (authResult.error) {
-    return NextResponse.json(authResult, {
-      status: 401,
-    });
+    res.status(401).json(authResult);
+    return;
   }
 
   try {
-    const response = await requestOpenai(req);
+    let modifiedReq = req;
 
-    // list models
+    // For POST requests (except listing models), modify the payload to include the user text as "query"
+    if (req.method === "POST" && subpath !== OpenaiPath.ListModelPath) {
+      const buffers = [];
+      for await (const chunk of req) {
+        buffers.push(chunk);
+      }
+      const body = JSON.parse(Buffer.concat(buffers).toString());
+
+      if (body && Array.isArray(body.messages)) {
+        // Get the last user message content
+        const userMessages = body.messages.filter(
+          (msg: any) => msg.role === "user",
+        );
+        const lastUserMessage =
+          userMessages.length > 0
+            ? userMessages[userMessages.length - 1].content
+            : null;
+
+        if (lastUserMessage) {
+          body.query = lastUserMessage;
+        } else {
+          console.warn(
+            "[OpenAI Route] No user message found in messages array.",
+          );
+        }
+      } else {
+        console.warn("[OpenAI Route] No messages array found in request body.");
+      }
+
+      modifiedReq = {
+        ...req,
+        body: JSON.stringify(body),
+        headers: {
+          ...req.headers,
+          "Content-Type": "application/json",
+        },
+      };
+    }
+
+    const response = await requestOpenai(modifiedReq);
+
+    // For list models requests, process the response accordingly.
     if (subpath === OpenaiPath.ListModelPath && response.status === 200) {
       const resJson = (await response.json()) as OpenAIListModelResponse;
       const availableModels = getModels(resJson);
-      return NextResponse.json(availableModels, {
-        status: response.status,
-      });
+      res.status(response.status).json(availableModels);
+      return;
     }
 
-    return response;
+    res.status(response.status).send(response.body);
   } catch (e) {
     console.error("[OpenAI] ", e);
-    return NextResponse.json(prettyObject(e));
+    res.status(500).json(prettyObject(e));
   }
 }
