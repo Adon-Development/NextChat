@@ -850,7 +850,7 @@ function _Chat() {
 
     let userMessage: ChatMessage | undefined;
     let botMessage: ChatMessage | undefined;
-
+    console.log(session.messages);
     if (message.role === "assistant") {
       // if it is resending a bot's message, find the user input for it
       botMessage = message;

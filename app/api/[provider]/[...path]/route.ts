@@ -111,26 +111,12 @@ async function handle(
       try {
         const responseData = await workerResponse.json();
         // Format the response back into the expected chat format
-        return new Response(
-          JSON.stringify({
-            id: Date.now().toString(),
-            object: "chat.completion",
-            choices: [
-              {
-                message: {
-                  role: "assistant",
-                  content: responseData.response || responseData,
-                },
-              },
-            ],
-          }),
-          {
-            headers: {
-              "Content-Type": "application/json",
-              "Access-Control-Allow-Origin": "*",
-            },
+        return new Response(JSON.stringify(responseData.structured), {
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
           },
-        );
+        });
       } catch (e) {
         console.error("[OpenAI Route] Error parsing worker response:", e);
         const textResponse = await workerResponse.text();

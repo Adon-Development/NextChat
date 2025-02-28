@@ -8,6 +8,7 @@
     "dev": "concurrently -r \"yarn run mask:watch\" \"next dev\"",
     "build": "yarn mask && cross-env BUILD_MODE=standalone next build",
     "start": "next start",
+    "debug": "node --inspect-brk ./node_modules/.bin/next start",
     "lint": "next lint",
     "export": "yarn mask && cross-env BUILD_MODE=export BUILD_APP=1 next build",
     "export:dev": "concurrently -r \"yarn mask:watch\"  \"cross-env BUILD_MODE=export BUILD_APP=1 next dev\"",
