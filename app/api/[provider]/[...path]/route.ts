@@ -110,10 +110,11 @@ async function handle(
       // Handle regular response
       try {
         const responseData = await workerResponse.json();
-        // Format the response back into the expected chat format
-        return new Response(JSON.stringify(responseData.structured), {
+        // Extract the content array and join it into a single string
+        const content = responseData.structured.join("\n");
+        return new Response(content, {
           headers: {
-            "Content-Type": "application/json",
+            "Content-Type": "text/plain",
             "Access-Control-Allow-Origin": "*",
           },
         });

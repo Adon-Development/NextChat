@@ -964,7 +964,6 @@ function _Chat() {
     context.push(copiedHello);
   }
 
-  // preview messages
   const renderMessages = useMemo(() => {
     return context
       .concat(session.messages as RenderMessage[])
