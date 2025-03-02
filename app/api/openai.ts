@@ -59,7 +59,6 @@ export default async function handler(
   try {
     let modifiedReq = req;
 
-    // For POST requests (except listing models), modify the payload to include the user text as "query"
     if (req.method === "POST" && subpath !== OpenaiPath.ListModelPath) {
       const buffers = [];
       for await (const chunk of req) {
@@ -67,16 +66,12 @@ export default async function handler(
       }
       const body = JSON.parse(Buffer.concat(buffers).toString());
 
+      console.log("[OpenAI Route] body ", body);
+
       if (body && Array.isArray(body.messages)) {
         // Get the last user message content
-        const userMessages = body.messages.filter(
-          (msg: any) => msg.role === "user",
-        );
-        const lastUserMessage =
-          userMessages.length > 0
-            ? userMessages[userMessages.length - 1].content
-            : null;
-
+        const lastUserMessage = body.messages.slice(-1)?.pop()?.content;
+        console.log("[OpenAI Route] lastUserMessage ", lastUserMessage);
         if (lastUserMessage) {
           body.query = lastUserMessage;
         } else {

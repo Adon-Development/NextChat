@@ -52,11 +52,11 @@ async function handle(
           { status: 400, headers: { "Content-Type": "application/json" } },
         );
       }
-
+      console.log("body messages ----", body.messages);
       // Extract just the user's text from the messages array
       const userText =
-        body.messages?.find((m) => m.role === "user")?.content || "";
-
+        body.messages?.filter((m) => m.role === "user").pop()?.content || "";
+      console.log("user text----", userText);
       // Forward the request to your Cloudflare Worker endpoint
       const workerResponse = await fetch("https://vgcassistant.com/bot", {
         method: "POST",

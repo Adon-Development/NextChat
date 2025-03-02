@@ -442,6 +442,16 @@ export const useChatStore = createPersistStore(
         // get recent messages
         const recentMessages = await get().getMessagesWithMemory();
         const sendMessages = recentMessages.concat(userMessage);
+        console.log("[Chat Store] sendMessages ", sendMessages);
+        // Ensure the latest user prompt is sent
+        const latestUserMessage = sendMessages.slice(-1)?.pop();
+        console.log("[Chat Store] latestUserMessage ", latestUserMessage);
+        if (latestUserMessage) {
+          sendMessages.push({
+            role: latestUserMessage.role,
+            content: getMessageTextContent(latestUserMessage),
+          });
+        }
         const messageIndex = session.messages.length + 1;
 
         // save user's and bot's message
