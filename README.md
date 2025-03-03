@@ -56,7 +56,7 @@ English / [简体中文](./README_CN.md)
 
 ## Enterprise Edition
 
-Meeting Your Company's Privatization and Customization Deployment Requirements:
+Meeting Your Company's Privatization and Customization Deployment Requirements: please work
 - **Brand Customization**: Tailored VI/UI to seamlessly align with your corporate brand image.
 - **Resource Integration**: Unified configuration and management of dozens of AI resources by company administrators, ready for use by team members.
 - **Permission Control**: Clearly defined member permissions, resource permissions, and knowledge base permissions, all controlled via a corporate-grade Admin Panel.
