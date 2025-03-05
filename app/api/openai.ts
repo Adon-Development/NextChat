@@ -57,14 +57,13 @@ export default async function handler(
   }
 
   try {
-    let modifiedReq = req;
-
+    let body;
     if (req.method === "POST" && subpath !== OpenaiPath.ListModelPath) {
       const buffers = [];
       for await (const chunk of req) {
         buffers.push(chunk);
       }
-      const body = JSON.parse(Buffer.concat(buffers).toString());
+      body = JSON.parse(Buffer.concat(buffers).toString());
 
       console.log("[OpenAI Route] body ", body);
 
@@ -81,16 +80,16 @@ export default async function handler(
       } else {
         console.warn("[OpenAI Route] No messages array found in request body.");
       }
-
-      modifiedReq = {
-        ...req,
-        body: JSON.stringify(body),
-        headers: {
-          ...req.headers,
-          "Content-Type": "application/json",
-        },
-      };
     }
+
+    const modifiedReq = {
+      ...req,
+      body: body ? JSON.stringify(body) : req.body,
+      headers: {
+        ...req.headers,
+        "Content-Type": "application/json",
+      },
+    };
 
     const response = await requestOpenai(modifiedReq);
 
