@@ -5,7 +5,6 @@ import {
   ModelProvider,
   ServiceProvider,
 } from "@/app/constant";
-import { prettyObject } from "@/app/utils/format";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/app/api/auth";
 import { isModelNotavailableInServer } from "@/app/utils/model";
@@ -30,15 +29,26 @@ export async function handle(
   }
 
   try {
-    const response = await request(req);
+    // Use tee() to create a duplicate of the request body stream
+    const [body1, body2] = req.body.tee();
+
+    // Use body1 for the first read
+    const response = await request(req, body1);
+
+    // Use body2 for any subsequent reads
+    // ...additional code...
+
     return response;
   } catch (e) {
     console.error("[ByteDance] ", e);
-    return NextResponse.json(prettyObject(e));
+    return NextResponse.json(
+      { error: true, message: "Internal server error" },
+      { status: 500 },
+    );
   }
 }
 
-async function request(req: NextRequest) {
+async function request(req: NextRequest, body: ReadableStream) {
   const controller = new AbortController();
 
   let path = `${req.nextUrl.pathname}`.replaceAll(ApiPath.ByteDance, "");
@@ -71,7 +81,7 @@ async function request(req: NextRequest) {
       Authorization: req.headers.get("Authorization") ?? "",
     },
     method: req.method,
-    body: req.body,
+    body: body,
     redirect: "manual",
     // @ts-ignore
     duplex: "half",
@@ -79,7 +89,7 @@ async function request(req: NextRequest) {
   };
 
   // #1815 try to refuse some request to some models
-  if (serverConfig.customModels && req.body) {
+  if (serverConfig.customModels && body) {
     try {
       const clonedBody = await req.text();
       fetchOptions.body = clonedBody;

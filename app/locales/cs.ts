@@ -96,7 +96,7 @@ const cs: PartialLocaleType = {
   },
   Export: {
     Title: "Sdílet konverzace",
-    Copy: "Kopírovat vše",
+    Copy: "Zkopírovat vše",
     Download: "Stáhnout soubor",
     Share: "Sdílet na ShareGPT",
     MessageFromYou: "Uživatel",
