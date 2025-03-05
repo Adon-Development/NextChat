@@ -126,6 +126,15 @@ For enterprise inquiries, please contact: **business@nextchat.dev**
    [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FYidadaa%2FChatGPT-Next-Web&env=OPENAI_API_KEY&env=CODE&project-name=chatgpt-next-web&repository-name=ChatGPT-Next-Web), remember that `CODE` is your page password;
 3. Enjoy :)
 
+## Stripe Integration
+
+To enable Stripe payments, follow these steps:
+
+1. Create a Stripe account and obtain your API keys.
+2. Add your Stripe secret key to the `stripeConfig.ts` file.
+3. Set up a webhook endpoint in your Stripe dashboard to point to `/webhook` on your server.
+4. Update your backend to handle Stripe webhooks and update user subscription status.
+
 ## FAQ
 
 [English > FAQ](./docs/faq-en.md)
