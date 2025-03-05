@@ -69,7 +69,6 @@ export default async function handler(
       console.log("[OpenAI Route] body ", body);
 
       if (body && Array.isArray(body.messages)) {
-        // Get the last user message content
         const lastUserMessage = body.messages.slice(-1)?.pop()?.content;
         console.log("[OpenAI Route] lastUserMessage ", lastUserMessage);
         if (lastUserMessage) {
@@ -95,7 +94,6 @@ export default async function handler(
 
     const response = await requestOpenai(modifiedReq);
 
-    // For list models requests, process the response accordingly.
     if (subpath === OpenaiPath.ListModelPath && response.status === 200) {
       const resJson = (await response.json()) as OpenAIListModelResponse;
       const availableModels = getModels(resJson);

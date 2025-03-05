@@ -11,7 +11,7 @@ async function handle(
     return NextResponse.json({ body: "OK" }, { status: 200 });
   }
   const [...key] = params.key;
-  // only allow to request to *.upstash.io
+
   if (!endpoint || !new URL(endpoint).hostname.endsWith(".upstash.io")) {
     return NextResponse.json(
       {
@@ -24,7 +24,6 @@ async function handle(
     );
   }
 
-  // only allow upstash get and set method
   if (params.action !== "get" && params.action !== "set") {
     console.log("[Upstash Route] forbidden action ", params.action);
     return NextResponse.json(
@@ -51,7 +50,6 @@ async function handle(
     },
     body: shouldNotHaveBody ? null : req.body,
     method,
-    // @ts-ignore
     duplex: "half",
   };
 

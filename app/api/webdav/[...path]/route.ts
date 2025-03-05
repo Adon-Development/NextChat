@@ -108,7 +108,7 @@ async function handle(
     );
   }
 
-  //   for PUT request, only allow request ending with fileName
+  // for PUT request, only allow request ending with fileName
   if (proxy_method === "PUT" && !targetPath.endsWith(fileName)) {
     return NextResponse.json(
       {
@@ -135,7 +135,6 @@ async function handle(
     body: shouldNotHaveBody ? null : req.body,
     redirect: "manual",
     method,
-    // @ts-ignore
     duplex: "half",
   };
 

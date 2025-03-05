@@ -46,7 +46,6 @@ export function fetch(url: string, options?: RequestInit): Promise<Response> {
     if (signal) {
       signal.addEventListener("abort", () => close());
     }
-    // @ts-ignore 2. listen response multi times, and write to Response.body
     window.__TAURI__.event
       .listen("stream-response", (e: ResponseEvent) =>
         requestIdPromise.then((request_id) => {
@@ -59,7 +58,6 @@ export function fetch(url: string, options?: RequestInit): Promise<Response> {
               writer.write(new Uint8Array(chunk));
             });
           } else if (status === 0) {
-            // end of body
             close();
           }
         }),
@@ -79,7 +77,6 @@ export function fetch(url: string, options?: RequestInit): Promise<Response> {
         method: method.toUpperCase(),
         url,
         headers,
-        // TODO FormData
         body:
           typeof body === "string"
             ? Array.from(new TextEncoder().encode(body))
@@ -100,7 +97,6 @@ export function fetch(url: string, options?: RequestInit): Promise<Response> {
       })
       .catch((e) => {
         console.error("stream error", e);
-        // throw e;
         return new Response("", { status: 599 });
       });
   }

@@ -73,7 +73,6 @@ async function request(req: NextRequest) {
     method: req.method,
     body: req.body,
     redirect: "manual",
-    // @ts-ignore
     duplex: "half",
     signal: controller.signal,
   };
