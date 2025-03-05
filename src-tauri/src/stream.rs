@@ -67,7 +67,8 @@ pub async fn stream_fetch(
   );
 
   if method == reqwest::Method::POST || method == reqwest::Method::PUT || method == reqwest::Method::PATCH {
-    let body = bytes::Bytes::from(body);
+    let (body1, body2) = body.tee();
+    let body = bytes::Bytes::from(body1);
     // println!("body: {:?}", body);
     request = request.body(body);
   }
