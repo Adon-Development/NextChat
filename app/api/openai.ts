@@ -57,13 +57,12 @@ export default async function handler(
   }
 
   try {
+    // Read the body once
+    const bodyData = await req.json();
+
     let body;
     if (req.method === "POST" && subpath !== OpenaiPath.ListModelPath) {
-      const buffers = [];
-      for await (const chunk of req) {
-        buffers.push(chunk);
-      }
-      body = JSON.parse(Buffer.concat(buffers).toString());
+      body = bodyData;
 
       console.log("[OpenAI Route] body ", body);
 

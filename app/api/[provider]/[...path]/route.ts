@@ -29,6 +29,9 @@ async function handle(
     );
   }
 
+  // Read the body once
+  const bodyData = await req.json();
+
   // Check if the provider is "openai"
   if (params.provider.toLowerCase() === "openai") {
     try {
@@ -37,7 +40,7 @@ async function handle(
       // Parse the request body with error handling
       let body;
       try {
-        body = await req.json();
+        body = bodyData;
         console.log(
           "[OpenAI Route] Request body:",
           JSON.stringify(body, null, 2),
