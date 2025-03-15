@@ -14,8 +14,6 @@ import BrainIcon from "../icons/brain.svg";
 import ReturnIcon from "../icons/return.svg";
 import CopyIcon from "../icons/copy.svg";
 import LoadingIcon from "../icons/three-dots.svg";
-import MaxIcon from "../icons/max.svg";
-import MinIcon from "../icons/min.svg";
 import ResetIcon from "../icons/reload.svg";
 import ReloadIcon from "../icons/reload.svg";
 import DeleteIcon from "../icons/clear.svg";
@@ -720,7 +718,14 @@ function _Chat() {
   };
 
   const doSubmit = (userInput: string) => {
+    console.log("[Chat] User input:", {
+      text: userInput,
+      hasAttachments: !isEmpty(attachImages),
+      timestamp: new Date().toISOString(),
+    });
+
     if (userInput.trim() === "" && isEmpty(attachImages)) return;
+
     const matchCommand = chatCommands.match(userInput);
     if (matchCommand.matched) {
       setUserInput("");
@@ -731,7 +736,14 @@ function _Chat() {
     setIsLoading(true);
     chatStore
       .onUserInput(userInput, attachImages)
-      .then(() => setIsLoading(false));
+      .then(() => {
+        console.log("[Chat] Message sent successfully");
+        setIsLoading(false);
+      })
+      .catch((err) => {
+        console.error("[Chat] Failed to send message:", err);
+        setIsLoading(false);
+      });
     setAttachImages([]);
     chatStore.setLastInput(userInput);
     setUserInput("");
@@ -1346,6 +1358,23 @@ function _Chat() {
     );
   };
 
+  const headerActions = (
+    <div className="window-actions">
+      <div className="window-action-button">
+        <IconButton
+          icon={<ReloadIcon />}
+          bordered
+          title={Locale.Chat.Actions.RefreshTitle}
+          onClick={() => {
+            showToast(Locale.Chat.Actions.RefreshToast);
+            // Removed summarization call
+          }}
+        />
+      </div>
+      {/* ...rest of existing actions... */}
+    </div>
+  );
+
   return (
     <>
       <div className={styles.chat} key={session.id}>
@@ -1379,34 +1408,7 @@ function _Chat() {
               {Locale.Chat.SubTitle(session.messages.length)}
             </div>
           </div>
-          <div className="window-actions">
-            <div className="window-action-button">
-              <IconButton
-                icon={<ReloadIcon />}
-                bordered
-                title={Locale.Chat.Actions.RefreshTitle}
-                onClick={() => {
-                  showToast(Locale.Chat.Actions.RefreshToast);
-                  chatStore.summarizeSession(true, session);
-                }}
-              />
-            </div>
-            {showMaxIcon && (
-              <div className="window-action-button">
-                <IconButton
-                  icon={config.tightBorder ? <MinIcon /> : <MaxIcon />}
-                  bordered
-                  title={Locale.Chat.Actions.FullScreen}
-                  aria={Locale.Chat.Actions.FullScreen}
-                  onClick={() => {
-                    config.update(
-                      (config) => (config.tightBorder = !config.tightBorder),
-                    );
-                  }}
-                />
-              </div>
-            )}
-          </div>
+          {headerActions}
 
           <PromptToast
             showToast={!hitBottom}

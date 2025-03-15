@@ -1,34 +1,50 @@
 import { NextResponse } from "next/server";
+
 export const runtime = "edge";
+
 export async function POST(req: Request) {
+  const requestId = Math.random().toString(36).substring(7);
+  console.log(`[Proxy ${requestId}] Request received`);
+
   try {
-    // Read the incoming request body (as text, since it's JSON)
     const body = await req.text();
-    console.log(
-      "[Proxy Route] Forwarding request to Cloudflare Worker with payload:",
-      body,
-    );
-    console.log(body);
-    // Forward the request to your Cloudflare Worker endpoint
-    const response = await fetch("https://vgcassistant.com/bot", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body,
+
+    console.log(`[Proxy ${requestId}] Request details:`, {
+      url: req.url,
+      method: req.method,
+      headers: Object.fromEntries(req.headers),
     });
 
-    // Read the response from the Worker
-    const data = await response.text();
-    console.log("[Proxy Route] Received response status:", response.status);
+    const fetchOptions = {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body,
+      mode: "no-cors" as RequestMode,
+    };
 
-    return new NextResponse(data, {
+    console.log(`[Proxy ${requestId}] Fetching with options:`, fetchOptions);
+
+    const response = await fetch("https://vgcassistant.com/bot", fetchOptions);
+
+    console.log(`[Proxy ${requestId}] VGC Response:`, {
       status: response.status,
-      headers: { "Content-Type": "application/json" },
+      statusText: response.statusText,
+    });
+
+    const data = await response.text();
+    return NextResponse.json(JSON.parse(data), {
+      status: response.status,
     });
   } catch (error: any) {
-    console.error("[Proxy Route] Error forwarding request:", error);
-    return new NextResponse(
-      JSON.stringify({ error: true, message: error.message }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
+    console.error(`[Proxy ${requestId}] Error:`, {
+      message: error.message,
+      stack: error.stack,
+    });
+    return NextResponse.json(
+      { error: true, message: error.message },
+      { status: 500 },
     );
   }
 }

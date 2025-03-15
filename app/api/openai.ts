@@ -2,9 +2,7 @@ import { NextApiRequest, NextApiResponse } from "next";
 import { OpenAIListModelResponse } from "@/app/client/platforms/openai";
 import { getServerSideConfig } from "@/app/config/server";
 import { ModelProvider, OpenaiPath } from "@/app/constant";
-import { prettyObject } from "@/app/utils/format";
 import { auth } from "./auth";
-import { requestOpenai } from "./common";
 
 const ALLOWED_PATH = new Set(Object.values(OpenaiPath));
 
@@ -57,51 +55,119 @@ export default async function handler(
   }
 
   try {
-    // Read the body once
-    const bodyData = await req.json();
+    // Clone the request to read it multiple times
+    const clonedRequest = req.clone();
+    const body = await clonedRequest.json();
+    console.log("[API Route] OpenAI request payload:", body);
 
-    let body;
-    if (req.method === "POST" && subpath !== OpenaiPath.ListModelPath) {
-      body = bodyData;
+    console.log("[OpenAI Route] Request body:", JSON.stringify(body, null, 2));
 
-      console.log("[OpenAI Route] body ", body);
+    // Extract just the user's text from the messages array
+    const userMessages = body.messages?.filter((m) => m.role === "user");
+    const userText = userMessages?.pop()?.content || "";
+    console.log("user text----", userText);
 
-      if (body && Array.isArray(body.messages)) {
-        const lastUserMessage = body.messages.slice(-1)?.pop()?.content;
-        console.log("[OpenAI Route] lastUserMessage ", lastUserMessage);
-        if (lastUserMessage) {
-          body.query = lastUserMessage;
-        } else {
-          console.warn(
-            "[OpenAI Route] No user message found in messages array.",
-          );
-        }
-      } else {
-        console.warn("[OpenAI Route] No messages array found in request body.");
-      }
-    }
-
-    const modifiedReq = {
-      ...req,
-      body: body ? JSON.stringify(body) : req.body,
+    // Forward the request to your Cloudflare Worker endpoint with original request body
+    const workerResponse = await fetch("https://vgcassistant.com/bot", {
+      method: "POST",
       headers: {
-        ...req.headers,
         "Content-Type": "application/json",
+        ...(req.headers.get("authorization") && {
+          Authorization: req.headers.get("authorization")!,
+        }),
       },
-    };
+      body: JSON.stringify({
+        query: userText,
+        model: body.model,
+        temperature: body.temperature,
+      }),
+    });
 
-    const response = await requestOpenai(modifiedReq);
+    console.log(
+      "[API Route] VGC Assistant response status:",
+      workerResponse.status,
+    );
 
-    if (subpath === OpenaiPath.ListModelPath && response.status === 200) {
-      const resJson = (await response.json()) as OpenAIListModelResponse;
-      const availableModels = getModels(resJson);
-      res.status(response.status).json(availableModels);
-      return;
+    // Log the worker response for debugging
+    console.log(
+      "[OpenAI Route] Worker response status:",
+      workerResponse.status,
+    );
+
+    // Handle error responses
+    if (!workerResponse.ok) {
+      let errorMessage;
+      try {
+        const errorData = await workerResponse.json();
+        console.error("[OpenAI Route] Worker error data:", errorData);
+        errorMessage = errorData.error || errorData.message || "Unknown error";
+      } catch (e) {
+        const textError = await workerResponse.text();
+        console.error("[OpenAI Route] Worker error text:", textError);
+        errorMessage = textError || "Failed to get error details";
+      }
+
+      return new Response(
+        JSON.stringify({
+          error: "Worker request failed",
+          status: workerResponse.status,
+          details: errorMessage,
+        }),
+        {
+          status: workerResponse.status,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        },
+      );
     }
 
-    res.status(response.status).send(response.body);
-  } catch (e) {
-    console.error("[OpenAI] ", e);
-    res.status(500).json(prettyObject(e));
+    // Handle regular response
+    try {
+      const responseData = await workerResponse.json();
+      // Extract the content array and join it into a single string
+      const content = responseData.structured.join("\n");
+      return new Response(content, {
+        headers: {
+          "Content-Type": "text/plain",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (e) {
+      console.error("[OpenAI Route] Error parsing worker response:", e);
+      const textResponse = await workerResponse.text();
+      console.error("[OpenAI Route] Raw worker response:", textResponse);
+      return new Response(
+        JSON.stringify({
+          error: "Invalid response from worker",
+          details: "Worker returned invalid JSON",
+          raw: textResponse,
+        }),
+        {
+          status: 500,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        },
+      );
+    }
+  } catch (error) {
+    console.error("[API Route] Error processing request:", error);
+    console.error("[OpenAI Route] Error:", error);
+    return new Response(
+      JSON.stringify({
+        error: "Internal server error",
+        details: error instanceof Error ? error.message : "Unknown error",
+      }),
+      {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      },
+    );
   }
 }

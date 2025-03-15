@@ -16,7 +16,7 @@ export function SideBar(props: { className?: string }) {
   return (
     <div className={styles.sidebar}>
       <div className={styles["sidebar-header"]}>
-        <div className={styles["sidebar-title"]}>VGC Assistant1</div>
+        <div className={styles["sidebar-title"]}>VGC Assistant</div>
         {isAuthenticated && (
           <div className={styles["sidebar-user-info"]}>
             Logged in as: {username}

@@ -223,14 +223,6 @@ export class ChatGPTApi implements LLMApi {
         if (!(isO1OrO3 && v.role === "system"))
           messages.push({ role: v.role, content });
       }
-      // Ensure the latest user prompt is sent
-      const latestUserMessage = options.messages.slice(-1)?.pop();
-      if (latestUserMessage) {
-        messages.push({
-          role: latestUserMessage.role,
-          content: getMessageTextContent(latestUserMessage),
-        });
-      }
 
       // O1 not support image, tools (plugin in ChatGPTNextWeb) and system, stream, logprobs, temperature, top_p, n, presence_penalty, frequency_penalty yet.
       requestPayload = {
