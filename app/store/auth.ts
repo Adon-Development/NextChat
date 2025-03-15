@@ -7,6 +7,7 @@ export interface AuthConfig {
   token: string | null;
   username: string | null;
   isAuthenticated: boolean;
+  baseUrl: string;
 }
 
 export interface AuthStore extends AuthConfig {
@@ -24,6 +25,7 @@ export const useAuthStore = create<AuthStore>()(
       token: null,
       username: null,
       isAuthenticated: false,
+      baseUrl: "https://vgcassistant.com",
 
       setToken: (token: string) => {
         set({ token, isAuthenticated: true });
@@ -31,6 +33,10 @@ export const useAuthStore = create<AuthStore>()(
 
       setUsername: (username: string) => {
         set({ username });
+      },
+
+      setBaseUrl: (url: string) => {
+        set({ baseUrl: url });
       },
 
       login: async (username: string, password: string) => {

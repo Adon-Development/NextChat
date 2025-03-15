@@ -64,12 +64,22 @@ export class OpenAIHandler {
         .map((m: any) => m.content)
         .join("\n");
 
+      // Get base URL from request header
+      const baseUrl =
+        req.headers.get("x-base-url") || "https://vgcassistant.com";
+      const apiEndpoint = `${baseUrl}/bot`;
+
+      console.log(`[OpenAI ${requestId}] Using API endpoint:`, apiEndpoint);
+
       // Forward request to VGC Assistant
       const fetchOptions = {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: authHeader || "",
+          // Add referrer and origin headers
+          Referer: baseUrl,
+          Origin: baseUrl,
         },
         body: JSON.stringify({
           query: userMessages || "", // Send all user messages
@@ -77,19 +87,18 @@ export class OpenAIHandler {
         }),
       };
 
-      console.log(`[OpenAI ${requestId}] Calling VGC Assistant with:`, {
-        queryLength: userMessages.length,
-        stream: parsedBody.stream,
+      console.log(`[OpenAI ${requestId}] Fetch options:`, {
+        url: apiEndpoint,
+        headers: fetchOptions.headers,
+        bodyLength: fetchOptions.body.length,
       });
 
-      const response = await fetch(
-        "https://vgcassistant.com/bot",
-        fetchOptions,
-      );
+      const response = await fetch(apiEndpoint, fetchOptions);
 
       console.log(`[OpenAI ${requestId}] Response:`, {
         status: response.status,
         statusText: response.statusText,
+        headers: Object.fromEntries(response.headers),
       });
 
       if (!response.ok) {
