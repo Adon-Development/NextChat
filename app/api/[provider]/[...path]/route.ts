@@ -29,42 +29,24 @@ async function handle(
     );
   }
 
-  // Clone the request body stream
-  const [body1, body2] = req.body.tee();
-
-  // Read the body once
-  const bodyData = await new Response(body1).json();
-
   // Check if the provider is "openai"
   if (params.provider.toLowerCase() === "openai") {
     try {
-      console.log("[OpenAI Route] Request path:", params.path);
+      // Clone the request to read it multiple times
+      const clonedRequest = req.clone();
+      const body = await clonedRequest.json();
 
-      // Parse the request body with error handling
-      let body;
-      try {
-        body = bodyData;
-        console.log(
-          "[OpenAI Route] Request body:",
-          JSON.stringify(body, null, 2),
-        );
-      } catch (error) {
-        console.error("[OpenAI Route] Error parsing request body:", error);
-        return new Response(
-          JSON.stringify({
-            error: "Failed to parse request body as JSON",
-            details: error instanceof Error ? error.message : "Unknown error",
-          }),
-          { status: 400, headers: { "Content-Type": "application/json" } },
-        );
-      }
+      console.log(
+        "[OpenAI Route] Request body:",
+        JSON.stringify(body, null, 2),
+      );
 
       // Extract just the user's text from the messages array
       const userMessages = body.messages?.filter((m) => m.role === "user");
       const userText = userMessages?.pop()?.content || "";
       console.log("user text----", userText);
 
-      // Forward the request to your Cloudflare Worker endpoint
+      // Forward the request to your Cloudflare Worker endpoint with original request body
       const workerResponse = await fetch("https://vgcassistant.com/bot", {
         method: "POST",
         headers: {
@@ -73,7 +55,11 @@ async function handle(
             Authorization: req.headers.get("authorization")!,
           }),
         },
-        body: body2, // Use the cloned body stream
+        body: JSON.stringify({
+          query: userText,
+          model: body.model,
+          temperature: body.temperature,
+        }),
       });
 
       // Log the worker response for debugging
