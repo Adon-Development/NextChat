@@ -1310,7 +1310,7 @@ function _Chat() {
           <div className={styles["chat-message-header"]}>
             {!isUser && (
               <div className={styles["chat-message-assistant-header"]}>
-                VGCAssistant
+                VGCAssistant1
               </div>
             )}
           </div>
