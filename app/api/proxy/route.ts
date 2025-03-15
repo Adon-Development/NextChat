@@ -8,7 +8,7 @@ export async function POST(req: Request) {
       "[Proxy Route] Forwarding request to Cloudflare Worker with payload:",
       body,
     );
-
+    console.log(body);
     // Forward the request to your Cloudflare Worker endpoint
     const response = await fetch("https://vgcassistant.com/bot", {
       method: "POST",

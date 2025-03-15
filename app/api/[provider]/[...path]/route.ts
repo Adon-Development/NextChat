@@ -29,8 +29,11 @@ async function handle(
     );
   }
 
+  // Clone the request body stream
+  const [body1, body2] = req.body.tee();
+
   // Read the body once
-  const bodyData = await req.json();
+  const bodyData = await new Response(body1).json();
 
   // Check if the provider is "openai"
   if (params.provider.toLowerCase() === "openai") {
@@ -70,9 +73,7 @@ async function handle(
             Authorization: req.headers.get("authorization")!,
           }),
         },
-        body: JSON.stringify({
-          query: userText, // Just send the user's text
-        }),
+        body: body2, // Use the cloned body stream
       });
 
       // Log the worker response for debugging
