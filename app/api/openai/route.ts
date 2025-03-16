@@ -64,10 +64,9 @@ export class OpenAIHandler {
         .map((m: any) => m.content)
         .join("\n");
 
-      // Get base URL from request header
-      const baseUrl =
-        req.headers.get("x-base-url") || "https://vgcassistant.com";
-      const apiEndpoint = `${baseUrl}/bot`;
+      // Get base URL from request header or originating host
+      const baseUrl = this.getBaseUrl(req);
+      const apiEndpoint = this.buildApiEndpoint(baseUrl);
 
       console.log(`[OpenAI ${requestId}] Using API endpoint:`, apiEndpoint);
 
@@ -77,9 +76,9 @@ export class OpenAIHandler {
         headers: {
           "Content-Type": "application/json",
           Authorization: authHeader || "",
-          // Add referrer and origin headers
-          Referer: baseUrl,
-          Origin: baseUrl,
+          "X-Real-Host": req.headers.get("host") || "",
+          "X-Forwarded-Host": req.headers.get("x-forwarded-host") || "",
+          "X-Original-URL": req.url,
         },
         body: JSON.stringify({
           query: userMessages || "", // Send all user messages
@@ -93,7 +92,12 @@ export class OpenAIHandler {
         bodyLength: fetchOptions.body.length,
       });
 
-      const response = await fetch(apiEndpoint, fetchOptions);
+      // Make the API request with retry logic
+      const response = await this.fetchWithRetry(
+        apiEndpoint,
+        fetchOptions,
+        requestId,
+      );
 
       console.log(`[OpenAI ${requestId}] Response:`, {
         status: response.status,
@@ -148,6 +152,55 @@ export class OpenAIHandler {
         { status: 500 },
       );
     }
+  }
+
+  private getBaseUrl(req: NextRequest): string {
+    // First check for explicit base URL header
+    const baseUrlHeader = req.headers.get("x-base-url");
+    if (baseUrlHeader) return baseUrlHeader;
+
+    // Then check forwarded host
+    const forwardedHost = req.headers.get("x-forwarded-host");
+    if (forwardedHost) {
+      const protocol = req.headers.get("x-forwarded-proto") || "https";
+      return `${protocol}://${forwardedHost}`;
+    }
+
+    // Fallback to request host
+    const host = req.headers.get("host");
+    return host ? `https://${host}` : "https://vgcassistant.com";
+  }
+
+  private buildApiEndpoint(baseUrl: string): string {
+    // Remove any trailing slashes
+    baseUrl = baseUrl.replace(/\/+$/, "");
+    return `${baseUrl}/bot`;
+  }
+
+  private async fetchWithRetry(
+    url: string,
+    options: RequestInit,
+    requestId: string,
+    retries = 3,
+  ): Promise<Response> {
+    for (let i = 0; i < retries; i++) {
+      try {
+        const response = await fetch(url, options);
+
+        if (response.status === 404) {
+          console.warn(
+            `[OpenAI ${requestId}] 404 error on attempt ${i + 1}, retrying...`,
+          );
+          continue;
+        }
+
+        return response;
+      } catch (error) {
+        if (i === retries - 1) throw error;
+        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, i))); // Exponential backoff
+      }
+    }
+    throw new Error(`Failed to fetch after ${retries} retries`);
   }
 }
 
