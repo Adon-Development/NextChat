@@ -26,6 +26,8 @@ export class OpenAIHandler {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*", // or specify your domain here
+            "Access-Control-Allow-Methods": "GET, POST",
             Authorization: req.headers.get("authorization") || "",
           },
           body: JSON.stringify({
