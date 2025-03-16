@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// Keep only the main endpoint that we know works
 const VGC_ENDPOINTS = [
-  { url: "https://api.vgcassistant.com/bot", ip: "172.67.156.144" },
   { url: "https://vgcassistant.com/bot", ip: "172.67.156.144" },
 ].map((e) => ({
   ...e,
@@ -198,126 +198,106 @@ export class OpenAIHandler {
     const timeout = 60000;
     let lastError: Error | null = null;
 
+    // Always use the original working endpoint if we're on a DNS redirect
+    const isDNSRedirect = url !== VGC_ENDPOINTS[0].url;
+    const targetEndpoint = isDNSRedirect
+      ? VGC_ENDPOINTS[0]
+      : { url, hostname: new URL(url).hostname };
+
+    console.log(
+      `[OpenAI ${requestId}] Using ${
+        isDNSRedirect ? "original" : "provided"
+      } endpoint:`,
+      {
+        url: targetEndpoint.url,
+        isDNSRedirect,
+      },
+    );
+
     const baseHeaders = {
       ...options.headers,
       Accept: "application/json",
       "Accept-Encoding": "gzip, deflate",
       Connection: "keep-alive",
-      Host: new URL(url).hostname,
-      "CF-Connecting-IP": options.headers?.["X-Real-IP"] || "",
-      "X-Real-IP": options.headers?.["X-Real-IP"] || "",
+      Host: targetEndpoint.hostname,
     };
 
-    // Try each endpoint
-    for (const endpoint of VGC_ENDPOINTS) {
-      let controller = new AbortController();
+    let controller = new AbortController();
 
-      for (let i = 0; i < retries; i++) {
-        const timeoutId = setTimeout(() => controller.abort(), timeout);
+    for (let i = 0; i < retries; i++) {
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-        try {
-          console.log(
-            `[OpenAI ${requestId}] Attempting ${endpoint.url}, try ${
-              i + 1
-            }/${retries}`,
-          );
+      try {
+        console.log(`[OpenAI ${requestId}] Attempt ${i + 1}/${retries}`);
 
-          // Try direct IP connection if DNS fails
-          const useDirectIp = i > 0; // Use IP on retry attempts
-          const targetUrl = useDirectIp
-            ? endpoint.url.replace(endpoint.hostname, endpoint.ip)
-            : endpoint.url;
+        const response = await fetch(targetEndpoint.url, {
+          ...options,
+          headers: baseHeaders,
+          signal: controller.signal,
+          keepalive: true,
+        });
 
-          const response = await fetch(targetUrl, {
-            ...options,
-            headers: {
-              ...baseHeaders,
-              Host: endpoint.hostname, // Required for IP direct access
-            },
-            signal: controller.signal,
-            keepalive: true,
-          });
+        clearTimeout(timeoutId);
 
-          clearTimeout(timeoutId);
+        console.log(`[OpenAI ${requestId}] Response:`, {
+          status: response.status,
+          headers: Object.fromEntries(response.headers),
+        });
 
-          // Log response details
-          console.log(`[OpenAI ${requestId}] Response from ${targetUrl}:`, {
-            status: response.status,
-            headers: Object.fromEntries(response.headers),
-            useDirectIp,
-          });
-
-          if (response.ok) {
-            return response;
-          }
-
-          // Handle Cloudflare errors
-          if ([1016, 520, 523, 525].includes(response.status)) {
-            console.log(
-              `[OpenAI ${requestId}] Cloudflare error ${response.status}, trying direct IP...`,
-            );
-            continue; // Retry with direct IP
-          }
-
-          let errorText = await response.text();
-          let errorJson;
-          try {
-            errorJson = JSON.parse(errorText);
-          } catch (e) {}
-
-          lastError = new Error(
-            errorJson?.error?.message ||
-              errorJson?.message ||
-              errorText ||
-              `HTTP error ${response.status}`,
-          );
-
-          if (response.status === 404) {
-            break; // Try next endpoint
-          }
-
-          throw lastError;
-        } catch (error) {
-          clearTimeout(timeoutId);
-          lastError = error as Error;
-
-          const isTimeout = error.name === "AbortError";
-          const isLastAttempt = i === retries - 1;
-          const isLastEndpoint =
-            endpoint === VGC_ENDPOINTS[VGC_ENDPOINTS.length - 1];
-
-          if (error.message?.includes("DNS")) {
-            console.log(`[OpenAI ${requestId}] DNS error, trying direct IP...`);
-            continue; // Retry with direct IP
-          }
-
-          console.error(`[OpenAI ${requestId}] Error:`, {
-            endpoint: endpoint.url,
-            attempt: i + 1,
-            error: isTimeout ? "Timeout" : error.message,
-            useDirectIp: i > 0,
-          });
-
-          if (isLastAttempt && isLastEndpoint) {
-            throw new Error(
-              `Failed to connect to VGC Assistant after all attempts. Last error: ${lastError?.message}`,
-            );
-          }
-
-          const delay = Math.min(
-            2000 * Math.pow(2, i) + Math.random() * 1000,
-            15000,
-          );
-          await new Promise((r) => setTimeout(r, delay));
-
-          controller = new AbortController();
+        if (response.ok) {
+          return response;
         }
+
+        if (response.status === 404 && isDNSRedirect) {
+          console.log(
+            `[OpenAI ${requestId}] DNS redirect failed, trying original endpoint`,
+          );
+          // Force using original endpoint on next try
+          return this.fetchWithRetry(VGC_ENDPOINTS[0].url, options, requestId);
+        }
+
+        let errorText = await response.text();
+        let errorJson;
+        try {
+          errorJson = JSON.parse(errorText);
+        } catch (e) {}
+
+        throw new Error(
+          errorJson?.error?.message ||
+            errorJson?.message ||
+            errorText ||
+            `HTTP error ${response.status}`,
+        );
+      } catch (error) {
+        clearTimeout(timeoutId);
+        lastError = error as Error;
+
+        const isTimeout = error.name === "AbortError";
+        const isLastAttempt = i === retries - 1;
+
+        console.error(`[OpenAI ${requestId}] Error:`, {
+          endpoint: targetEndpoint.url,
+          attempt: i + 1,
+          error: isTimeout ? "Timeout" : error.message,
+        });
+
+        if (isLastAttempt) {
+          throw new Error(
+            `Failed to connect to VGC Assistant. Last error: ${lastError?.message}`,
+          );
+        }
+
+        const delay = Math.min(
+          2000 * Math.pow(2, i) + Math.random() * 1000,
+          15000,
+        );
+        await new Promise((r) => setTimeout(r, delay));
+
+        controller = new AbortController();
       }
     }
 
-    throw (
-      lastError || new Error("Failed to connect to any VGC Assistant endpoint")
-    );
+    throw lastError || new Error("Failed to connect to VGC Assistant");
   }
 }
 
