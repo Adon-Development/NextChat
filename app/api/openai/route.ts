@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
+const VGC_ENDPOINTS = [
+  "https://api.vgcassistant.com/bot", // Primary endpoint
+  "https://vgcassistant.com/bot", // Fallback 1
+  "https://backup.vgcassistant.com/bot", // Fallback 2
+];
+
 export class OpenAIHandler {
   async handle(req: NextRequest, params: { provider: string; path: string[] }) {
     const requestId = Math.random().toString(36).substring(7);
@@ -187,91 +193,117 @@ export class OpenAIHandler {
     requestId: string,
     retries = 3,
   ): Promise<Response> {
-    const timeout = 30000; // 30 second timeout
-    let controller = new AbortController();
+    const timeout = 30000;
+    let lastError: Error | null = null;
 
-    // Add timeout signal to options
-    options.signal = controller.signal;
+    // Add CORS and proxy headers
+    const baseHeaders = {
+      ...options.headers,
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "X-Forwarded-Proto": "https",
+    };
 
-    for (let i = 0; i < retries; i++) {
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
+    // Try each endpoint
+    for (const endpoint of VGC_ENDPOINTS) {
+      let controller = new AbortController();
 
-      try {
-        console.log(
-          `[OpenAI ${requestId}] Attempt ${
-            i + 1
-          }/${retries} to fetch from ${url}`,
-        );
+      for (let i = 0; i < retries; i++) {
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-        // Validate endpoint is reachable
         try {
-          await fetch(new URL(url).origin, {
-            method: "HEAD",
+          console.log(
+            `[OpenAI ${requestId}] Attempting ${endpoint}, try ${
+              i + 1
+            }/${retries}`,
+          );
+
+          const response = await fetch(endpoint, {
+            ...options,
+            headers: {
+              ...baseHeaders,
+              Connection: "keep-alive",
+              "Keep-Alive": "timeout=60",
+            },
             signal: controller.signal,
           });
-        } catch (e) {
-          console.error(`[OpenAI ${requestId}] Endpoint validation failed:`, e);
-          throw new Error(`Endpoint ${url} is not reachable`);
-        }
 
-        const response = await fetch(url, {
-          ...options,
-          headers: {
-            ...options.headers,
-            Connection: "keep-alive",
-            "Keep-Alive": "timeout=60",
-          },
-        });
+          clearTimeout(timeoutId);
 
-        clearTimeout(timeoutId);
+          // Log response details for debugging
+          console.log(`[OpenAI ${requestId}] Response from ${endpoint}:`, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: Object.fromEntries(response.headers),
+          });
 
-        // Check common error status codes
-        if (response.status === 404) {
-          throw new Error("Endpoint not found");
-        } else if (response.status === 403) {
-          throw new Error("Access forbidden");
-        } else if (response.status === 401) {
-          throw new Error("Unauthorized");
-        } else if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
+          if (response.ok) {
+            return response;
+          }
 
-        return response;
-      } catch (error) {
-        clearTimeout(timeoutId);
+          // Try parsing error response
+          let errorText = await response.text();
+          let errorJson;
+          try {
+            errorJson = JSON.parse(errorText);
+          } catch (e) {
+            // If not JSON, use text as is
+          }
 
-        const isLastAttempt = i === retries - 1;
-        const isTimeout = error.name === "AbortError";
-
-        console.error(
-          `[OpenAI ${requestId}] Fetch error (attempt ${i + 1}/${retries}):`,
-          isTimeout ? "Request timed out" : error.message,
-        );
-
-        if (isLastAttempt) {
-          throw new Error(
-            `Failed to connect to VGC Assistant after ${retries} attempts. ` +
-              `Last error: ${isTimeout ? "Request timed out" : error.message}`,
+          lastError = new Error(
+            errorJson?.error?.message ||
+              errorJson?.message ||
+              errorText ||
+              `HTTP error ${response.status}`,
           );
+
+          if (response.status === 404) {
+            console.log(
+              `[OpenAI ${requestId}] Endpoint ${endpoint} not found, trying next...`,
+            );
+            break; // Try next endpoint immediately
+          }
+
+          throw lastError;
+        } catch (error) {
+          clearTimeout(timeoutId);
+          lastError = error as Error;
+
+          const isTimeout = error.name === "AbortError";
+          const isLastAttempt = i === retries - 1;
+          const isLastEndpoint =
+            endpoint === VGC_ENDPOINTS[VGC_ENDPOINTS.length - 1];
+
+          console.error(`[OpenAI ${requestId}] Failed attempt:`, {
+            endpoint,
+            attempt: i + 1,
+            error: isTimeout ? "Timeout" : error.message,
+          });
+
+          if (isLastAttempt && isLastEndpoint) {
+            throw new Error(
+              `Failed to connect to VGC Assistant after all attempts. Last error: ${lastError?.message}`,
+            );
+          }
+
+          // Add delay between retries
+          if (!isLastAttempt || !isLastEndpoint) {
+            const delay = Math.min(
+              1000 * Math.pow(2, i) + Math.random() * 1000,
+              10000,
+            );
+            await new Promise((r) => setTimeout(r, delay));
+          }
+
+          controller = new AbortController();
         }
-
-        // Exponential backoff with jitter
-        const delay = Math.min(
-          1000 * Math.pow(2, i) + Math.random() * 1000,
-          10000,
-        );
-        console.log(
-          `[OpenAI ${requestId}] Retrying in ${Math.round(delay)}ms...`,
-        );
-        await new Promise((r) => setTimeout(r, delay));
-
-        // Create new controller for next attempt
-        controller = new AbortController();
-        options.signal = controller.signal;
       }
     }
 
-    throw new Error("Retry loop completed without return");
+    throw (
+      lastError || new Error("Failed to connect to any VGC Assistant endpoint")
+    );
   }
 }
 
