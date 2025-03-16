@@ -172,9 +172,13 @@ export class OpenAIHandler {
   }
 
   private buildApiEndpoint(baseUrl: string): string {
-    // Remove any trailing slashes
-    baseUrl = baseUrl.replace(/\/+$/, "");
-    return `${baseUrl}/bot`;
+    try {
+      baseUrl = baseUrl.replace(/\/+$/, "");
+      const url = new URL("/bot", baseUrl);
+      return url.toString();
+    } catch (e) {
+      throw new Error(`Invalid base URL: ${baseUrl}`);
+    }
   }
 
   private async fetchWithRetry(
@@ -183,24 +187,91 @@ export class OpenAIHandler {
     requestId: string,
     retries = 3,
   ): Promise<Response> {
-    for (let i = 0; i < retries; i++) {
-      try {
-        const response = await fetch(url, options);
+    const timeout = 30000; // 30 second timeout
+    let controller = new AbortController();
 
+    // Add timeout signal to options
+    options.signal = controller.signal;
+
+    for (let i = 0; i < retries; i++) {
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+      try {
+        console.log(
+          `[OpenAI ${requestId}] Attempt ${
+            i + 1
+          }/${retries} to fetch from ${url}`,
+        );
+
+        // Validate endpoint is reachable
+        try {
+          await fetch(new URL(url).origin, {
+            method: "HEAD",
+            signal: controller.signal,
+          });
+        } catch (e) {
+          console.error(`[OpenAI ${requestId}] Endpoint validation failed:`, e);
+          throw new Error(`Endpoint ${url} is not reachable`);
+        }
+
+        const response = await fetch(url, {
+          ...options,
+          headers: {
+            ...options.headers,
+            Connection: "keep-alive",
+            "Keep-Alive": "timeout=60",
+          },
+        });
+
+        clearTimeout(timeoutId);
+
+        // Check common error status codes
         if (response.status === 404) {
-          console.warn(
-            `[OpenAI ${requestId}] 404 error on attempt ${i + 1}, retrying...`,
-          );
-          continue;
+          throw new Error("Endpoint not found");
+        } else if (response.status === 403) {
+          throw new Error("Access forbidden");
+        } else if (response.status === 401) {
+          throw new Error("Unauthorized");
+        } else if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
 
         return response;
       } catch (error) {
-        if (i === retries - 1) throw error;
-        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, i))); // Exponential backoff
+        clearTimeout(timeoutId);
+
+        const isLastAttempt = i === retries - 1;
+        const isTimeout = error.name === "AbortError";
+
+        console.error(
+          `[OpenAI ${requestId}] Fetch error (attempt ${i + 1}/${retries}):`,
+          isTimeout ? "Request timed out" : error.message,
+        );
+
+        if (isLastAttempt) {
+          throw new Error(
+            `Failed to connect to VGC Assistant after ${retries} attempts. ` +
+              `Last error: ${isTimeout ? "Request timed out" : error.message}`,
+          );
+        }
+
+        // Exponential backoff with jitter
+        const delay = Math.min(
+          1000 * Math.pow(2, i) + Math.random() * 1000,
+          10000,
+        );
+        console.log(
+          `[OpenAI ${requestId}] Retrying in ${Math.round(delay)}ms...`,
+        );
+        await new Promise((r) => setTimeout(r, delay));
+
+        // Create new controller for next attempt
+        controller = new AbortController();
+        options.signal = controller.signal;
       }
     }
-    throw new Error(`Failed to fetch after ${retries} retries`);
+
+    throw new Error("Retry loop completed without return");
   }
 }
 
