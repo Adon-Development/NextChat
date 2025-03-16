@@ -193,19 +193,26 @@ export class OpenAIHandler {
     requestId: string,
     retries = 3,
   ): Promise<Response> {
-    const timeout = 30000;
+    const timeout = 60000; // Increase timeout to 60s
     let lastError: Error | null = null;
 
-    // Add CORS and proxy headers
+    // Add required Cloudflare and DNS resolution headers
     const baseHeaders = {
       ...options.headers,
+      Accept: "application/json",
+      "CF-Access-Client-Id": "", // Add if you have Cloudflare Access
+      "CF-Access-Client-Secret": "", // Add if you have Cloudflare Access
+      "CF-IPCountry": "US", // Help with geo-routing
+      "CF-Connecting-IP": "", // Will be set by Cloudflare
+      "CDN-Loop": "cloudflare",
+      "X-Real-IP": "", // Will be set by Cloudflare
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
-      "X-Forwarded-Proto": "https",
+      "Access-Control-Allow-Headers":
+        "Content-Type, Authorization, CF-Access-Client-Id, CF-Access-Client-Secret",
     };
 
-    // Try each endpoint
+    // Try each endpoint with DNS resolution handling
     for (const endpoint of VGC_ENDPOINTS) {
       let controller = new AbortController();
 
@@ -225,21 +232,40 @@ export class OpenAIHandler {
               ...baseHeaders,
               Connection: "keep-alive",
               "Keep-Alive": "timeout=60",
+              // Add DNS resolution hint headers
+              "Accept-Encoding": "gzip",
+              Host: new URL(endpoint).hostname,
             },
             signal: controller.signal,
+            // Add fetch options for better DNS handling
+            credentials: "omit", // Don't send credentials
+            mode: "cors", // Enable CORS
+            keepalive: true, // Keep connection alive
           });
 
           clearTimeout(timeoutId);
 
-          // Log response details for debugging
-          console.log(`[OpenAI ${requestId}] Response from ${endpoint}:`, {
-            status: response.status,
-            statusText: response.statusText,
-            headers: Object.fromEntries(response.headers),
-          });
-
           if (response.ok) {
             return response;
+          }
+
+          // Handle Cloudflare specific errors
+          if (
+            response.status === 1016 ||
+            response.status === 520 ||
+            response.status === 523
+          ) {
+            console.log(
+              `[OpenAI ${requestId}] Cloudflare DNS error ${response.status}, retrying...`,
+            );
+
+            // Add delay between retries with jitter for Cloudflare errors
+            const delay = Math.min(
+              2000 * Math.pow(2, i) + Math.random() * 1000,
+              15000,
+            );
+            await new Promise((r) => setTimeout(r, delay));
+            continue;
           }
 
           // Try parsing error response
@@ -258,13 +284,6 @@ export class OpenAIHandler {
               `HTTP error ${response.status}`,
           );
 
-          if (response.status === 404) {
-            console.log(
-              `[OpenAI ${requestId}] Endpoint ${endpoint} not found, trying next...`,
-            );
-            break; // Try next endpoint immediately
-          }
-
           throw lastError;
         } catch (error) {
           clearTimeout(timeoutId);
@@ -275,11 +294,16 @@ export class OpenAIHandler {
           const isLastEndpoint =
             endpoint === VGC_ENDPOINTS[VGC_ENDPOINTS.length - 1];
 
-          console.error(`[OpenAI ${requestId}] Failed attempt:`, {
-            endpoint,
-            attempt: i + 1,
-            error: isTimeout ? "Timeout" : error.message,
-          });
+          // Special handling for DNS and Cloudflare errors
+          if (
+            error.message?.includes("1016") ||
+            error.message?.includes("DNS")
+          ) {
+            console.warn(
+              `[OpenAI ${requestId}] DNS resolution failed for ${endpoint}, trying next endpoint...`,
+            );
+            break; // Try next endpoint immediately for DNS errors
+          }
 
           if (isLastAttempt && isLastEndpoint) {
             throw new Error(
@@ -287,14 +311,11 @@ export class OpenAIHandler {
             );
           }
 
-          // Add delay between retries
-          if (!isLastAttempt || !isLastEndpoint) {
-            const delay = Math.min(
-              1000 * Math.pow(2, i) + Math.random() * 1000,
-              10000,
-            );
-            await new Promise((r) => setTimeout(r, delay));
-          }
+          const delay = Math.min(
+            2000 * Math.pow(2, i) + Math.random() * 1000,
+            15000,
+          );
+          await new Promise((r) => setTimeout(r, delay));
 
           controller = new AbortController();
         }
