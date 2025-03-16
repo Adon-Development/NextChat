@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const VGC_ENDPOINTS = [
-  "https://api.vgcassistant.com/bot", // Primary endpoint
-  "https://vgcassistant.com/bot", // Fallback 1
-  "https://backup.vgcassistant.com/bot", // Fallback 2
-];
+  { url: "https://api.vgcassistant.com/bot", ip: "172.67.156.144" },
+  { url: "https://vgcassistant.com/bot", ip: "172.67.156.144" },
+].map((e) => ({
+  ...e,
+  hostname: new URL(e.url).hostname,
+}));
 
 export class OpenAIHandler {
   async handle(req: NextRequest, params: { provider: string; path: string[] }) {
@@ -193,26 +195,20 @@ export class OpenAIHandler {
     requestId: string,
     retries = 3,
   ): Promise<Response> {
-    const timeout = 60000; // Increase timeout to 60s
+    const timeout = 60000;
     let lastError: Error | null = null;
 
-    // Add required Cloudflare and DNS resolution headers
     const baseHeaders = {
       ...options.headers,
       Accept: "application/json",
-      "CF-Access-Client-Id": "", // Add if you have Cloudflare Access
-      "CF-Access-Client-Secret": "", // Add if you have Cloudflare Access
-      "CF-IPCountry": "US", // Help with geo-routing
-      "CF-Connecting-IP": "", // Will be set by Cloudflare
-      "CDN-Loop": "cloudflare",
-      "X-Real-IP": "", // Will be set by Cloudflare
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers":
-        "Content-Type, Authorization, CF-Access-Client-Id, CF-Access-Client-Secret",
+      "Accept-Encoding": "gzip, deflate",
+      Connection: "keep-alive",
+      Host: new URL(url).hostname,
+      "CF-Connecting-IP": options.headers?.["X-Real-IP"] || "",
+      "X-Real-IP": options.headers?.["X-Real-IP"] || "",
     };
 
-    // Try each endpoint with DNS resolution handling
+    // Try each endpoint
     for (const endpoint of VGC_ENDPOINTS) {
       let controller = new AbortController();
 
@@ -221,61 +217,53 @@ export class OpenAIHandler {
 
         try {
           console.log(
-            `[OpenAI ${requestId}] Attempting ${endpoint}, try ${
+            `[OpenAI ${requestId}] Attempting ${endpoint.url}, try ${
               i + 1
             }/${retries}`,
           );
 
-          const response = await fetch(endpoint, {
+          // Try direct IP connection if DNS fails
+          const useDirectIp = i > 0; // Use IP on retry attempts
+          const targetUrl = useDirectIp
+            ? endpoint.url.replace(endpoint.hostname, endpoint.ip)
+            : endpoint.url;
+
+          const response = await fetch(targetUrl, {
             ...options,
             headers: {
               ...baseHeaders,
-              Connection: "keep-alive",
-              "Keep-Alive": "timeout=60",
-              // Add DNS resolution hint headers
-              "Accept-Encoding": "gzip",
-              Host: new URL(endpoint).hostname,
+              Host: endpoint.hostname, // Required for IP direct access
             },
             signal: controller.signal,
-            // Add fetch options for better DNS handling
-            credentials: "omit", // Don't send credentials
-            mode: "cors", // Enable CORS
-            keepalive: true, // Keep connection alive
+            keepalive: true,
           });
 
           clearTimeout(timeoutId);
+
+          // Log response details
+          console.log(`[OpenAI ${requestId}] Response from ${targetUrl}:`, {
+            status: response.status,
+            headers: Object.fromEntries(response.headers),
+            useDirectIp,
+          });
 
           if (response.ok) {
             return response;
           }
 
-          // Handle Cloudflare specific errors
-          if (
-            response.status === 1016 ||
-            response.status === 520 ||
-            response.status === 523
-          ) {
+          // Handle Cloudflare errors
+          if ([1016, 520, 523, 525].includes(response.status)) {
             console.log(
-              `[OpenAI ${requestId}] Cloudflare DNS error ${response.status}, retrying...`,
+              `[OpenAI ${requestId}] Cloudflare error ${response.status}, trying direct IP...`,
             );
-
-            // Add delay between retries with jitter for Cloudflare errors
-            const delay = Math.min(
-              2000 * Math.pow(2, i) + Math.random() * 1000,
-              15000,
-            );
-            await new Promise((r) => setTimeout(r, delay));
-            continue;
+            continue; // Retry with direct IP
           }
 
-          // Try parsing error response
           let errorText = await response.text();
           let errorJson;
           try {
             errorJson = JSON.parse(errorText);
-          } catch (e) {
-            // If not JSON, use text as is
-          }
+          } catch (e) {}
 
           lastError = new Error(
             errorJson?.error?.message ||
@@ -283,6 +271,10 @@ export class OpenAIHandler {
               errorText ||
               `HTTP error ${response.status}`,
           );
+
+          if (response.status === 404) {
+            break; // Try next endpoint
+          }
 
           throw lastError;
         } catch (error) {
@@ -294,16 +286,17 @@ export class OpenAIHandler {
           const isLastEndpoint =
             endpoint === VGC_ENDPOINTS[VGC_ENDPOINTS.length - 1];
 
-          // Special handling for DNS and Cloudflare errors
-          if (
-            error.message?.includes("1016") ||
-            error.message?.includes("DNS")
-          ) {
-            console.warn(
-              `[OpenAI ${requestId}] DNS resolution failed for ${endpoint}, trying next endpoint...`,
-            );
-            break; // Try next endpoint immediately for DNS errors
+          if (error.message?.includes("DNS")) {
+            console.log(`[OpenAI ${requestId}] DNS error, trying direct IP...`);
+            continue; // Retry with direct IP
           }
+
+          console.error(`[OpenAI ${requestId}] Error:`, {
+            endpoint: endpoint.url,
+            attempt: i + 1,
+            error: isTimeout ? "Timeout" : error.message,
+            useDirectIp: i > 0,
+          });
 
           if (isLastAttempt && isLastEndpoint) {
             throw new Error(
