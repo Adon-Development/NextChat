@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const VGC_ENDPOINT = "https://vgcassistant.com/bot";
-
+export const runtime = "edge";
 export class OpenAIHandler {
   async handle(req: NextRequest, params: { provider: string; path: string[] }) {
     try {
