@@ -17,23 +17,32 @@ export class OpenAIHandler {
         .filter((m: any) => m.role === "user")
         .map((m: any) => m.content)
         .join("\n");
+      console.log("Headers:", req.headers);
+      console.log("Request body:", messages);
+      console.log("Fetching from:", VGC_ENDPOINT);
+      let response;
+      try {
+        response = await fetch(VGC_ENDPOINT, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: req.headers.get("authorization") || "",
+          },
+          body: JSON.stringify({
+            query: userMessages,
+            stream: false,
+          }),
+        });
 
-      const response = await fetch(VGC_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: req.headers.get("authorization") || "",
-        },
-        body: JSON.stringify({
-          query: userMessages,
-          stream: false,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(
+            `HTTP error! Status: ${response.status}. Response: ${errorText}`,
+          );
+        }
+      } catch (error) {
+        throw error;
       }
-
       const data = await response.json();
       return NextResponse.json({
         choices: [
@@ -82,5 +91,3 @@ export class OpenAIHandler {
     });
   }
 }
-
-export const runtime = "edge";
