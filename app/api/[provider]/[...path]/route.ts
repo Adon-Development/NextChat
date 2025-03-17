@@ -1,5 +1,4 @@
 import { NextRequest } from "next/server";
-// Import OpenAI handler properly with correct path
 import { OpenAIHandler } from "@/app/api/openai/route";
 
 async function handle(
