@@ -54,7 +54,16 @@ export class OpenAIHandler {
       });
 
       // Read the response from the Worker
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (error) {
+        console.error("Error parsing response body:", error);
+        return NextResponse.json(
+          { error: true, message: "Invalid JSON response from worker" },
+          { status: 500 },
+        );
+      }
 
       return NextResponse.json({
         choices: [
