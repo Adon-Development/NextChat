@@ -7,7 +7,16 @@ export class OpenAIHandler {
     try {
       // Read the incoming request body (as text, since it's JSON)
       const body = await req.text();
-      const parsedBody = body ? JSON.parse(body) : {};
+      let parsedBody;
+      try {
+        parsedBody = body ? JSON.parse(body) : {};
+      } catch (error) {
+        console.error("Error parsing request body:", error);
+        return NextResponse.json(
+          { error: true, message: "Invalid JSON input" },
+          { status: 400 },
+        );
+      }
 
       // Log the entire request payload
       console.log("Route: /api/openai, Request payload:", parsedBody);
@@ -59,6 +68,7 @@ export class OpenAIHandler {
         ],
       });
     } catch (error: any) {
+      console.error("Error handling request:", error);
       return NextResponse.json(
         { error: true, message: String(error) },
         { status: 500 },
