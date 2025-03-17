@@ -66,6 +66,15 @@ export class OpenAIHandler {
         );
       }
 
+      // Check if the response contains an error
+      if (data.error) {
+        console.error("Worker response error:", data.message);
+        return NextResponse.json(
+          { error: true, message: data.message },
+          { status: 500 },
+        );
+      }
+
       return NextResponse.json({
         choices: [
           {
