@@ -5,7 +5,7 @@ const API_URL = "https://vgcassistant.com/bot";
 export class OpenAIHandler {
   async handle(req: NextRequest) {
     try {
-      // Read the incoming request body (as text, since it's JSON)
+      // Read the incoming request body (as text, since it's1 JSON)
       const body = await req.text();
       let parsedBody;
       try {
