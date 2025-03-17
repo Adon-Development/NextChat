@@ -56,7 +56,8 @@ export class OpenAIHandler {
       // Read the response from the Worker
       let data;
       try {
-        data = await response.json();
+        const text = await response.text();
+        data = text ? JSON.parse(text) : {};
       } catch (error) {
         console.error("Error parsing response body:", error);
         return NextResponse.json(
