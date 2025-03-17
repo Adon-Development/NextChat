@@ -42,21 +42,25 @@ export class OpenAIHandler {
       console.log("Route: /api/openai, User input:", userText);
 
       // Forward the request to your Cloudflare Worker endpoint
+      const requestBody = JSON.stringify({
+        query: userText, // Just send the user's text
+      });
+      console.log("Request body to worker:", requestBody);
+
       const response = await fetch(API_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: req.headers.get("authorization") || "",
         },
-        body: JSON.stringify({
-          query: userText, // Just send the user's text
-        }),
+        body: requestBody,
       });
 
       // Read the response from the Worker
       let data;
       try {
         const text = await response.text();
+        console.log("Worker response text:", text);
         data = text ? JSON.parse(text) : {};
       } catch (error) {
         console.error("Error parsing response body:", error);
@@ -74,6 +78,9 @@ export class OpenAIHandler {
           { status: 500 },
         );
       }
+
+      // Log the processed response data
+      console.log("Processed response data:", data);
 
       return NextResponse.json({
         choices: [
