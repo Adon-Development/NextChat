@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const API_URL = "https://vgcassistant.com/api/openai/v1/chat/completions";
+const API_ENDPOINTS = [
+  "https://vgcassistant.com/api/openai/v1/chat/completions",
+  "https://api.vgcassistant.com/api/openai/v1/chat/completions",
+  "https://api-v2.vgcassistant.com/api/openai/v1/chat/completions",
+];
+
 const IS_PUBLIC_ACCESS = true; // Allow public access by default
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -10,6 +15,22 @@ const ERROR_MESSAGES: Record<string, string> = {
   "1015": "Rate limit exceeded",
   // Add more error codes as needed
 };
+
+async function fetchWithRetry(url: string, options: RequestInit, retries = 2) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await fetch(url, options);
+      if (response.ok) {
+        return response;
+      }
+    } catch (error) {
+      if (i === retries - 1) {
+        throw error;
+      }
+    }
+  }
+  throw new Error("All retries failed");
+}
 
 export class OpenAIHandler {
   async handle(req: NextRequest) {
@@ -32,6 +53,12 @@ export class OpenAIHandler {
         "Content-Type": "application/json",
         Accept: "application/json, text/event-stream",
         Cookie: req.headers.get("cookie") || "",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124",
+        "Sec-CH-UA": '"Chromium";v="91"',
+        "Sec-CH-UA-Mobile": "?0",
+        "Sec-Fetch-Site": "same-origin",
+        "Cache-Control": "no-cache",
       });
 
       // Only add auth header if present
@@ -64,41 +91,33 @@ export class OpenAIHandler {
         top_p: body.top_p ?? 1,
       };
 
-      const response = await fetch(API_URL, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorMessage;
+      // Try each endpoint
+      let lastError;
+      for (const endpoint of API_ENDPOINTS) {
         try {
-          const errorJson = JSON.parse(errorText);
-          const errorCode = errorJson.message?.match(/error code: (\d+)/)?.[1];
-          errorMessage = errorCode
-            ? `${
-                ERROR_MESSAGES[errorCode] || "Unknown error"
-              } (Code: ${errorCode})`
-            : errorJson.message || errorJson.error || errorText;
-        } catch {
-          errorMessage = errorText || `HTTP error ${response.status}`;
+          const response = await fetchWithRetry(endpoint, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(requestBody),
+          });
+
+          if (response.ok) {
+            return requestBody.stream
+              ? new Response(response.body, {
+                  headers: {
+                    "Content-Type": "text/event-stream",
+                    "Cache-Control": "no-cache",
+                    Connection: "keep-alive",
+                  },
+                })
+              : NextResponse.json(await response.json());
+          }
+        } catch (error) {
+          lastError = error;
+          continue;
         }
-        throw new Error(errorMessage);
       }
-
-      if (requestBody.stream) {
-        return new Response(response.body, {
-          headers: {
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache",
-            Connection: "keep-alive",
-          },
-        });
-      }
-
-      const data = await response.json();
-      return NextResponse.json(data);
+      throw lastError || new Error("All endpoints failed");
     } catch (error: any) {
       const statusCode = error.message.includes("Authentication") ? 401 : 500;
       return NextResponse.json(
