@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 
 const API_URL = "https://vgcassistant.com/api/openai/v1/chat/completions";
 
+// Add error code mapping (same as proxy route)
+const ERROR_MESSAGES: Record<string, string> = {
+  "1000": "Authentication error or invalid request format",
+  // Add more error codes as needed
+};
+
 export class OpenAIHandler {
   async handle(req: NextRequest) {
     try {
@@ -11,10 +17,19 @@ export class OpenAIHandler {
         "Content-Type": "application/json",
         Accept: "application/json, text/event-stream",
         Authorization: req.headers.get("authorization") || "",
+        Cookie: req.headers.get("cookie") || "",
       });
 
-      // Copy important headers
-      ["user-agent", "accept-language", "sec-fetch-mode"].forEach((header) => {
+      // Copy all important headers
+      [
+        "user-agent",
+        "accept-language",
+        "sec-fetch-mode",
+        "sec-fetch-site",
+        "sec-ch-ua",
+        "sec-ch-ua-platform",
+        "referer",
+      ].forEach((header) => {
         const value = req.headers.get(header);
         if (value) headers.set(header, value);
       });
@@ -41,7 +56,12 @@ export class OpenAIHandler {
         let errorMessage;
         try {
           const errorJson = JSON.parse(errorText);
-          errorMessage = errorJson.message || errorJson.error || errorText;
+          const errorCode = errorJson.message?.match(/error code: (\d+)/)?.[1];
+          errorMessage = errorCode
+            ? `${
+                ERROR_MESSAGES[errorCode] || "Unknown error"
+              } (Code: ${errorCode})`
+            : errorJson.message || errorJson.error || errorText;
         } catch {
           errorMessage = errorText || `HTTP error ${response.status}`;
         }
