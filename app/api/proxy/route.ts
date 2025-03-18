@@ -7,35 +7,40 @@ export async function POST(req: Request) {
   console.log(`[Proxy ${requestId}] Request received`);
 
   try {
-    const body = await req.text();
+    const { messages = [] } = await req.json();
+    const userText =
+      messages.filter((m: any) => m.role === "user").pop()?.content || "";
 
     console.log(`[Proxy ${requestId}] Request details:`, {
       url: req.url,
       method: req.method,
-      headers: Object.fromEntries(req.headers),
+      userText,
     });
 
-    const fetchOptions = {
+    const response = await fetch("https://vgcassistant.com/bot", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: req.headers.get("authorization") || "",
       },
-      body,
-      mode: "no-cors" as RequestMode,
-    };
-
-    console.log(`[Proxy ${requestId}] Fetching with options:`, fetchOptions);
-
-    const response = await fetch("https://vgcassistant.com/bot", fetchOptions);
-
-    console.log(`[Proxy ${requestId}] VGC Response:`, {
-      status: response.status,
-      statusText: response.statusText,
+      body: JSON.stringify({ query: userText }),
     });
 
-    const data = await response.text();
-    return NextResponse.json(JSON.parse(data), {
-      status: response.status,
+    if (!response.ok) {
+      throw new Error(`Request failed with status ${response.status}`);
+    }
+
+    const data = await response.json();
+    return NextResponse.json({
+      choices: [
+        {
+          message: {
+            role: "assistant",
+            content: data.structured?.[0] || data.original || "",
+          },
+          finish_reason: "stop",
+        },
+      ],
     });
   } catch (error: any) {
     console.error(`[Proxy ${requestId}] Error:`, {
