@@ -11,35 +11,41 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    // Forward the complete body while ensuring required fields
-    const requestBody = {
-      ...body,
-      model: body.model || "gpt-4o-mini",
-      temperature: body.temperature ?? 0.5,
-      max_tokens: body.max_tokens ?? 4000,
-      stream: body.stream ?? true,
-      presence_penalty: body.presence_penalty ?? 0,
-      frequency_penalty: body.frequency_penalty ?? 0,
-      top_p: body.top_p ?? 1,
-    };
+    // Forward all original headers
+    const headers = new Headers({
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+      Authorization: req.headers.get("authorization") || "",
+      Origin: new URL(req.url).origin,
+    });
+
+    // Copy additional headers from original request
+    ["user-agent", "accept-language", "sec-fetch-mode"].forEach((header) => {
+      const value = req.headers.get(header);
+      if (value) headers.set(header, value);
+    });
 
     const response = await fetch(API_URL, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: req.headers.get("authorization") || "",
-        Accept: "application/json, text/event-stream",
-        Origin: new URL(req.url).origin,
-      },
-      body: JSON.stringify(requestBody),
+      headers,
+      body: JSON.stringify(body),
     });
 
+    // Get error details if available
     if (!response.ok) {
-      throw new Error(`Request failed with status ${response.status}`);
+      const errorText = await response.text();
+      let errorMessage;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.message || errorJson.error || errorText;
+      } catch {
+        errorMessage = errorText || `HTTP error ${response.status}`;
+      }
+      throw new Error(errorMessage);
     }
 
-    // If streaming is requested, return the stream directly
-    if (requestBody.stream) {
+    // Handle streaming response
+    if (body.stream) {
       return new Response(response.body, {
         headers: {
           "Content-Type": "text/event-stream",
@@ -57,7 +63,11 @@ export async function POST(req: Request) {
       stack: error.stack,
     });
     return NextResponse.json(
-      { error: true, message: error.message },
+      {
+        error: true,
+        message: error.message,
+        details: error.stack,
+      },
       { status: 500 },
     );
   }

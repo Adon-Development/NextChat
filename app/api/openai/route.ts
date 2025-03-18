@@ -7,6 +7,18 @@ export class OpenAIHandler {
     try {
       const body = await req.json();
 
+      const headers = new Headers({
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+        Authorization: req.headers.get("authorization") || "",
+      });
+
+      // Copy important headers
+      ["user-agent", "accept-language", "sec-fetch-mode"].forEach((header) => {
+        const value = req.headers.get(header);
+        if (value) headers.set(header, value);
+      });
+
       const requestBody = {
         ...body,
         model: body.model || "gpt-4o-mini",
@@ -20,17 +32,20 @@ export class OpenAIHandler {
 
       const response = await fetch(API_URL, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: req.headers.get("authorization") || "",
-          Accept: "application/json, text/event-stream",
-          Origin: req.headers.get("origin") || "",
-        },
+        headers,
         body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
-        throw new Error(`Request failed with status ${response.status}`);
+        const errorText = await response.text();
+        let errorMessage;
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.message || errorJson.error || errorText;
+        } catch {
+          errorMessage = errorText || `HTTP error ${response.status}`;
+        }
+        throw new Error(errorMessage);
       }
 
       if (requestBody.stream) {
@@ -46,9 +61,16 @@ export class OpenAIHandler {
       const data = await response.json();
       return NextResponse.json(data);
     } catch (error: any) {
-      console.error("Error handling request:", error);
+      console.error("[OpenAI Handler] Error:", {
+        message: error.message,
+        stack: error.stack,
+      });
       return NextResponse.json(
-        { error: true, message: String(error) },
+        {
+          error: true,
+          message: error.message,
+          details: error.stack,
+        },
         { status: 500 },
       );
     }
