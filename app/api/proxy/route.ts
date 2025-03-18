@@ -4,9 +4,11 @@ export const runtime = "edge";
 
 const API_URL = "https://vgcassistant.com/api/openai/v1/chat/completions";
 
-// Add error code mapping
 const ERROR_MESSAGES: Record<string, string> = {
-  "1000": "Authentication error or invalid request format",
+  "1000": "Authentication error - Please check your API key and try again",
+  "1019": "Cloudflare security check failed - Please refresh the page",
+  "1020": "Access denied by security rules",
+  "1015": "Rate limit exceeded",
   // Add more error codes as needed
 };
 
@@ -17,16 +19,28 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    // Forward all important headers
+    // Validate request body
+    if (!body.messages || !Array.isArray(body.messages)) {
+      throw new Error("Invalid request format: messages array is required");
+    }
+
+    // Ensure Authorization header is present
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader) {
+      throw new Error("Authentication required");
+    }
+
     const headers = new Headers({
       "Content-Type": "application/json",
       Accept: "application/json, text/event-stream",
-      Authorization: req.headers.get("authorization") || "",
+      Authorization: authHeader,
       Origin: new URL(req.url).origin,
       Cookie: req.headers.get("cookie") || "",
+      "CF-Access-Client-Id": req.headers.get("cf-access-client-id") || "",
+      "CF-Access-Client-Secret":
+        req.headers.get("cf-access-client-secret") || "",
     });
 
-    // Copy additional headers from original request
     [
       "user-agent",
       "accept-language",
@@ -86,13 +100,14 @@ export async function POST(req: Request) {
       message: error.message,
       stack: error.stack,
     });
+    const statusCode = error.message.includes("Authentication") ? 401 : 500;
     return NextResponse.json(
       {
         error: true,
         message: error.message,
         details: error.stack,
       },
-      { status: 500 },
+      { status: statusCode },
     );
   }
 }
