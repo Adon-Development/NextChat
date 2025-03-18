@@ -1,98 +1,50 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const API_URL = "https://vgcassistant.com/bot";
+const API_URL = "https://vgcassistant.com/api/openai/v1/chat/completions";
 
 export class OpenAIHandler {
   async handle(req: NextRequest) {
     try {
-      // Read the incoming request body (as text, since it's1 JSON)
-      const body = await req.text();
-      let parsedBody;
-      try {
-        parsedBody = body ? JSON.parse(body) : {};
-      } catch (error) {
-        console.error("Error parsing request body:", error);
-        return NextResponse.json(
-          { error: true, message: "Invalid JSON input" },
-          { status: 400 },
-        );
-      }
+      const body = await req.json();
 
-      // Log the entire request payload
-      console.log("Route: /api/openai, Request payload:", parsedBody);
-
-      // Extract user messages and filter out duplicates
-      const userMessages = parsedBody.messages?.filter(
-        (m: any) => m.role === "user",
-      );
-      const uniqueUserMessages = Array.from(
-        new Set(userMessages.map((m: any) => m.content)),
-      ).map((content) => userMessages.find((m: any) => m.content === content));
-
-      // Filter out the specific user input
-      const filteredUserMessages = uniqueUserMessages.filter(
-        (m) =>
-          m?.content !==
-          "Please generate a four to five word title summarizing our conversation without any lead-in, punctuation, quotation marks, periods, symbols, bold text, or additional text. Remove enclosing quotation marks.",
-      );
-
-      const userText = filteredUserMessages.pop()?.content || "";
-
-      // Log the route name and the user input before making the request
-      console.log("Route: /api/openai, User input:", userText);
-
-      // Forward the request to your Cloudflare Worker endpoint
-      const requestBody = JSON.stringify({
-        query: userText, // Just send the user's text
-      });
-      console.log("Request body to worker:", requestBody);
+      const requestBody = {
+        ...body,
+        model: body.model || "gpt-4o-mini",
+        temperature: body.temperature ?? 0.5,
+        max_tokens: body.max_tokens ?? 4000,
+        stream: body.stream ?? true,
+        presence_penalty: body.presence_penalty ?? 0,
+        frequency_penalty: body.frequency_penalty ?? 0,
+        top_p: body.top_p ?? 1,
+      };
 
       const response = await fetch(API_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: req.headers.get("authorization") || "",
+          Accept: "application/json, text/event-stream",
+          Origin: req.headers.get("origin") || "",
         },
-        body: requestBody,
+        body: JSON.stringify(requestBody),
       });
 
-      // Read the response from the Worker
-      let data;
-      try {
-        const text = await response.text();
-        console.log("Worker response text:", text);
-        data = text ? JSON.parse(text) : {};
-      } catch (error) {
-        console.error("Error parsing response body:", error);
-        return NextResponse.json(
-          { error: true, message: "Invalid JSON response from worker" },
-          { status: 500 },
-        );
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
       }
 
-      // Check if the response contains an error
-      if (data.error) {
-        console.error("Worker response error:", data.message);
-        return NextResponse.json(
-          { error: true, message: data.message },
-          { status: 500 },
-        );
-      }
-
-      // Log the processed response data
-      console.log("Processed response data:", data);
-
-      return NextResponse.json({
-        choices: [
-          {
-            message: {
-              role: "assistant",
-              content: data.structured?.[0] || data.original || "",
-            },
-            finish_reason: "stop",
+      if (requestBody.stream) {
+        return new Response(response.body, {
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive",
           },
-        ],
-      });
+        });
+      }
+
+      const data = await response.json();
+      return NextResponse.json(data);
     } catch (error: any) {
       console.error("Error handling request:", error);
       return NextResponse.json(
