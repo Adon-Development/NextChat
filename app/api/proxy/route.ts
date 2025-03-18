@@ -20,10 +20,16 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 async function fetchWithRetry(url: string, options: RequestInit, retries = 2) {
+  const timeout = 15000; // 15 second timeout
+
   for (let i = 0; i <= retries; i++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
     try {
       const response = await fetch(url, {
         ...options,
+        signal: controller.signal,
         headers: {
           ...options.headers,
           "CF-Access-Client": "browser",
@@ -32,14 +38,20 @@ async function fetchWithRetry(url: string, options: RequestInit, retries = 2) {
         },
       });
 
-      if (response.ok || i === retries) return response;
+      clearTimeout(timeoutId);
 
-      const errorText = await response.text();
-      if (errorText.includes("1019")) {
-        continue; // Retry on Cloudflare errors
+      if (!response.ok && i < retries) {
+        await new Promise((r) => setTimeout(r, 1000 * (i + 1))); // Exponential backoff
+        continue;
       }
       return response;
-    } catch (error) {
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      if (error.name === "AbortError") {
+        console.log(`Request timeout, attempt ${i + 1} of ${retries + 1}`);
+        if (i === retries) throw new Error("Request timed out");
+        continue;
+      }
       if (i === retries) throw error;
     }
   }
@@ -102,9 +114,14 @@ export async function POST(req: Request) {
       Object.fromEntries(headers.entries()),
     );
 
-    // Try each endpoint until one works
+    // Try each endpoint with a shorter list
+    const endpoints = [
+      "https://vgcassistant.com/api/openai/v1/chat/completions",
+      "https://api.vgcassistant.com/bot", // Fallback to simpler endpoint
+    ];
+
     let lastError;
-    for (const endpoint of API_ENDPOINTS) {
+    for (const endpoint of endpoints) {
       try {
         const response = await fetchWithRetry(endpoint, {
           method: "POST",
@@ -143,7 +160,10 @@ export async function POST(req: Request) {
 
         const data = await response.json();
         return NextResponse.json(data);
-      } catch (error) {
+      } catch (error: any) {
+        if (error.message === "Request timed out") {
+          console.error(`Timeout for endpoint ${endpoint}`);
+        }
         lastError = error;
         continue;
       }

@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const API_ENDPOINTS = [
   "https://vgcassistant.com/api/openai/v1/chat/completions",
-  "https://api.vgcassistant.com/api/openai/v1/chat/completions",
-  "https://api-v2.vgcassistant.com/api/openai/v1/chat/completions",
+  "https://api.vgcassistant.com/bot", // Fallback to simpler endpoint
 ];
 
 const IS_PUBLIC_ACCESS = true; // Allow public access by default
@@ -89,6 +88,7 @@ export class OpenAIHandler {
         presence_penalty: body.presence_penalty ?? 0,
         frequency_penalty: body.frequency_penalty ?? 0,
         top_p: body.top_p ?? 1,
+        timeout: 15000, // Add timeout to request
       };
 
       // Try each endpoint
@@ -112,7 +112,10 @@ export class OpenAIHandler {
                 })
               : NextResponse.json(await response.json());
           }
-        } catch (error) {
+        } catch (error: any) {
+          if (error.message === "Request timed out") {
+            console.error(`Timeout for endpoint ${endpoint}`);
+          }
           lastError = error;
           continue;
         }
