@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const API_URL = "https://vgcassistant.com/api/openai/v1/chat/completions";
+const IS_PUBLIC_ACCESS = true; // Allow public access by default
 
 const ERROR_MESSAGES: Record<string, string> = {
   "1000": "Authentication error - Please check your API key and try again",
@@ -20,21 +21,23 @@ export class OpenAIHandler {
         throw new Error("Invalid request format: messages array is required");
       }
 
-      // Ensure Authorization header is present
       const authHeader = req.headers.get("authorization");
-      if (!authHeader) {
+
+      // Only check auth if not in public access mode
+      if (!IS_PUBLIC_ACCESS && !authHeader) {
         throw new Error("Authentication required");
       }
 
       const headers = new Headers({
         "Content-Type": "application/json",
         Accept: "application/json, text/event-stream",
-        Authorization: req.headers.get("authorization") || "",
         Cookie: req.headers.get("cookie") || "",
-        "CF-Access-Client-Id": req.headers.get("cf-access-client-id") || "",
-        "CF-Access-Client-Secret":
-          req.headers.get("cf-access-client-secret") || "",
       });
+
+      // Only add auth header if present
+      if (authHeader) {
+        headers.set("Authorization", authHeader);
+      }
 
       // Copy all important headers
       [
