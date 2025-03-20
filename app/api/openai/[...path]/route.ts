@@ -1,22 +1,17 @@
 import { NextRequest } from "next/server";
-import { OpenAIHandler } from "../route";
+import { POST as handleRequest } from "../route";
 
 export const runtime = "edge";
 
-// Create path handler
 export async function POST(
   req: NextRequest,
   { params }: { params: { path: string[] } },
 ) {
-  console.log("[OpenAI Route] Path params:", params.path);
+  // Log path for debugging
+  console.log("[OpenAI Route] Handling path:", params.path?.join("/"));
 
-  // Initialize handler
-  const handler = new OpenAIHandler();
-
-  // Handle all OpenAI API paths
-  const response = await handler.handle(req);
-
-  return response;
+  // Forward to main handler
+  return handleRequest(req);
 }
 
 export const GET = POST;
