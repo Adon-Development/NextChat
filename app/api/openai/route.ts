@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const API_ENDPOINTS = [
-  "https://vgcassistant.com/api/openai/v1/chat/completions",
-  "https://api.vgcassistant.com/bot", // Fallback to simpler endpoint
-];
-
+const API_ENDPOINT = "https://vgcassistant.com/bot";
 const IS_PUBLIC_ACCESS = true; // Allow public access by default
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -34,12 +30,19 @@ async function fetchWithRetry(url: string, options: RequestInit, retries = 2) {
 export class OpenAIHandler {
   async handle(req: NextRequest) {
     try {
+      console.log("[OpenAI Handler] Processing request:", {
+        url: req.url,
+        method: req.method,
+      });
+
       const body = await req.json();
 
-      // Validate request body
-      if (!body.messages || !Array.isArray(body.messages)) {
-        throw new Error("Invalid request format: messages array is required");
-      }
+      // Extract query from messages
+      const messages = body.messages || [];
+      const lastUserMessage = messages
+        .filter((m: any) => m.role === "user")
+        .pop();
+      const query = lastUserMessage?.content || "";
 
       const authHeader = req.headers.get("authorization");
 
@@ -79,48 +82,77 @@ export class OpenAIHandler {
         if (value) headers.set(header, value);
       });
 
+      // Transform request to match /bot endpoint format
       const requestBody = {
-        ...body,
-        model: body.model || "gpt-4o-mini",
-        temperature: body.temperature ?? 0.5,
-        max_tokens: body.max_tokens ?? 4000,
+        query,
         stream: body.stream ?? true,
-        presence_penalty: body.presence_penalty ?? 0,
-        frequency_penalty: body.frequency_penalty ?? 0,
-        top_p: body.top_p ?? 1,
-        timeout: 15000, // Add timeout to request
+        temperature: body.temperature ?? 0.5,
       };
 
-      // Try each endpoint
-      let lastError;
-      for (const endpoint of API_ENDPOINTS) {
-        try {
-          const response = await fetchWithRetry(endpoint, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(requestBody),
-          });
+      const response = await fetch(API_ENDPOINT, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(requestBody),
+      });
 
-          if (response.ok) {
-            return requestBody.stream
-              ? new Response(response.body, {
-                  headers: {
-                    "Content-Type": "text/event-stream",
-                    "Cache-Control": "no-cache",
-                    Connection: "keep-alive",
-                  },
-                })
-              : NextResponse.json(await response.json());
-          }
-        } catch (error: any) {
-          if (error.message === "Request timed out") {
-            console.error(`Timeout for endpoint ${endpoint}`);
-          }
-          lastError = error;
-          continue;
-        }
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
       }
-      throw lastError || new Error("All endpoints failed");
+
+      if (requestBody.stream) {
+        // Transform bot response into OpenAI SSE format
+        const transformStream = new TransformStream({
+          async transform(chunk, controller) {
+            const text = new TextDecoder().decode(chunk);
+            try {
+              const data = JSON.parse(text);
+              const content = data.structured?.[0] || data.original || "";
+              if (content) {
+                const message = {
+                  choices: [
+                    {
+                      delta: { content },
+                      finish_reason: null,
+                    },
+                  ],
+                };
+                controller.enqueue(`data: ${JSON.stringify(message)}\n\n`);
+              }
+            } catch (e) {
+              console.error("Failed to parse chunk:", text);
+            }
+          },
+          flush(controller) {
+            controller.enqueue("data: [DONE]\n\n");
+          },
+        });
+
+        return new Response(response.body?.pipeThrough(transformStream), {
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive",
+          },
+        });
+      }
+
+      const data = await response.json();
+      if (!data.structured?.[0] && !data.original) {
+        throw new Error("empty response from server");
+      }
+
+      // Transform bot response into OpenAI format
+      return NextResponse.json({
+        choices: [
+          {
+            message: {
+              role: "assistant",
+              content: data.structured?.[0] || data.original || "",
+            },
+            finish_reason: "stop",
+          },
+        ],
+      });
     } catch (error: any) {
       const statusCode = error.message.includes("Authentication") ? 401 : 500;
       return NextResponse.json(
